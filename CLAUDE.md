@@ -1,0 +1,3 @@
+# CLAUDE
+
+<!-- BEACON-MANAGED -->

@@ -1,0 +1,16 @@
+{
+  "architecture_blueprint_ready": true,
+  "docs_version": "v0.1.0",
+  "gate_managed": false,
+  "implementation_archive_enabled": false,
+  "lifecycle_adoption_level": 2,
+  "next_recommended_stage": "think",
+  "project_mode": "greenfield",
+  "qa_managed": false,
+  "runtime_version": "2.0.0-go.11",
+  "schema_version": "1.0",
+  "takeover_baseline_frozen_at": "",
+  "takeover_baseline_status": "not_applicable",
+  "updated_at": "2026-11-03T17:00:45Z",
+  "version_blueprint_ready": true
+}

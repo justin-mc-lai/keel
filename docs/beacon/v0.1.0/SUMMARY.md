@@ -1,0 +1,3 @@
+# Beacon Summary
+
+- status: draft
