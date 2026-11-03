@@ -11,10 +11,14 @@ dist/
 # node
 node_modules/
 frontend/node_modules/
-frontend/dist/
+frontend/dist/*
+!frontend/dist/.gitkeep
 
 # os
 .DS_Store
+
+# beacon runtime (machine-local run state)
+.beacon/
 
 # local data
 *.db
