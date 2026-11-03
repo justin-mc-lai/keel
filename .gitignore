@@ -6,7 +6,7 @@
 # build output
 build/bin/
 bin/
-dist/
+/dist/
 
 # node
 node_modules/
