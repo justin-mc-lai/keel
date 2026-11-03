@@ -79,8 +79,10 @@ func (r *Registry) List() []Info {
 }
 
 func hasKey(p Provider) bool {
+	// Only the built-in transport declares its credential state. A foreign
+	// implementation is reported as unavailable rather than assumed ready.
 	if o, ok := p.(*OpenAICompatible); ok {
 		return o.apiKey != ""
 	}
-	return true
+	return false
 }

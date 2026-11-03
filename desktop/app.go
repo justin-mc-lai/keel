@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -44,7 +45,10 @@ func New() *App {
 	}
 	st, err := store.Open("")
 	if err != nil {
-		st, _ = store.Open(":memory:")
+		if st, err = store.Open(":memory:"); err != nil {
+			log.Printf("agentdesk: session store unavailable: %v", err)
+			st = nil
+		}
 	}
 	return NewWith(reg, st)
 }
@@ -75,16 +79,32 @@ func (a *App) SetEmitter(e Emitter) { a.emit = e }
 // Providers returns the configured vendors for the settings panel.
 func (a *App) Providers() []provider.Info { return a.reg.List() }
 
+// ErrNoStore is returned when the session database could not be opened.
+var ErrNoStore = errors.New("session store unavailable")
+
 // Sessions lists stored conversations.
-func (a *App) Sessions() ([]store.Session, error) { return a.store.ListSessions() }
+func (a *App) Sessions() ([]store.Session, error) {
+	if a.store == nil {
+		return nil, ErrNoStore
+	}
+	return a.store.ListSessions()
+}
 
 // History returns one conversation's messages.
 func (a *App) History(sessionID string) ([]provider.Message, error) {
+	if a.store == nil {
+		return nil, ErrNoStore
+	}
 	return a.store.Messages(sessionID)
 }
 
 // NewSession creates a conversation and returns its id.
-func (a *App) NewSession() (string, error) { return a.store.CreateSession("") }
+func (a *App) NewSession() (string, error) {
+	if a.store == nil {
+		return "", ErrNoStore
+	}
+	return a.store.CreateSession("")
+}
 
 // Cancel stops an in-flight turn.
 func (a *App) Cancel(sessionID string) {
@@ -99,6 +119,9 @@ func (a *App) Cancel(sessionID string) {
 // Send runs one turn. Tokens arrive on EventChat while it runs; the returned
 // string is the final answer so a caller that lost the stream can recover.
 func (a *App) Send(sessionID, providerName, model, text string) (string, error) {
+	if a.store == nil {
+		return "", ErrNoStore
+	}
 	if sessionID == "" {
 		id, err := a.store.CreateSession("")
 		if err != nil {
@@ -111,7 +134,9 @@ func (a *App) Send(sessionID, providerName, model, text string) (string, error) 
 		return "", err
 	}
 
-	tools, err := tool.NewDefaultRegistry(func(name string, args []byte) bool { return true })
+	// Default deny: the desktop has no approval prompt yet, so a tool that
+	// asks for approval must not run unattended. Built-in tools do not ask.
+	tools, err := tool.NewDefaultRegistry(func(name string, args []byte) bool { return false })
 	if err != nil {
 		return "", err
 	}

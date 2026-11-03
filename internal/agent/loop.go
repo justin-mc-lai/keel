@@ -94,7 +94,6 @@ func (l *Loop) Run(ctx context.Context, sessionID, input string) (string, error)
 					calls = append(calls, *ev.ToolCall)
 				}
 			case provider.EventError:
-				l.emit(ev)
 				if ev.Err != nil {
 					return "", ev.Err
 				}
