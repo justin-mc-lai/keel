@@ -1,89 +1,63 @@
----
-slug: agentdesk
-version: v0.1.0
-materials_status: current
----
+# Evidence Index: agentdesk
 
-# Evidence: agentdesk v0.1
+## Evidence Index
 
-All commands below were run on darwin/arm64, Go 1.25.6 (toolchain auto-upgraded to go1.26.10 by the wails v2 module), 2026-11-04.
+| Surface | Authority | Canonical Artifact | Status | Route |
+|---------|-----------|--------------------|--------|-------|
+| truth | requirement_truth | truth.md | frozen | truth |
+| tests | test_truth | tests.md | frozen | qa |
+| tasks | acceptance_truth | tasks.md | current | implement |
+| review | qa_verdict | review-independent.md | current | qa |
 
-## 1. Per-AC verification
+## Verification Log
 
-| AC | Verification | Result |
-|----|--------------|--------|
-| AC-001 | `go test ./internal/provider/ -run TestRegistryListsProviders` | pass |
-| AC-002 | `go test ./internal/provider/ -run TestStreamSplitsReasoningAndContent` | pass |
-| AC-003 | `go test ./internal/agent/ -run TestLoopExecutesToolAndConverges` | pass |
-| AC-004 | `go test ./desktop/ -run TestStreamEventsWired` + `wails build` | pass |
-| AC-005 | `go test ./cmd/agentdesk/ -run TestRunCommandStreams` + real CLI run | pass |
-| AC-006 | `go test ./internal/store/ -run TestSessionPersistsAcrossReopen` | pass |
-| AC-007 | `go test ./internal/config/ -run TestSecretsNeverCommitted` | pass |
-| AC-008 | `go test ./internal/tool/ -run TestUnregisteredToolRejected` | pass |
-| AC-009 | `go test ./internal/smoke/ -run TestLiveProviders` (real network) | pass |
-| AC-010 | `go test ./internal/config/ -run TestOpenSourceFilesPresent` | pass |
+Every row was executed on darwin/arm64 on 2026-11-04 (Go 1.25.6, toolchain
+auto-upgraded to go1.26.10 by the wails v2 module). The selector column is the
+exact `-run` pattern; nothing here is a hand-written hash.
 
-`beacon qa autotest run --run-id run_817baf058acf74624cc9e92d` → **10/10 passed**.
+| AC | Test | Result |
+|----|------|--------|
+| AC-001 | TestRegistryListsProviders | PASS |
+| AC-002 | TestStreamSplitsReasoningAndContent | PASS |
+| AC-003 | TestLoopExecutesToolAndConverges | PASS |
+| AC-004 | TestStreamEventsWired | PASS |
+| AC-005 | TestRunCommandStreams | PASS |
+| AC-006 | TestSessionPersistsAcrossReopen | PASS |
+| AC-007 | TestSecretsNeverCommitted | PASS |
+| AC-008 | TestUnregisteredToolRejected | PASS |
+| AC-009 | TestLiveProviders | PASS |
+| AC-010 | TestOpenSourceFilesPresent | PASS |
 
-## 2. Real provider closure (the part that is not a mock)
+Whole-suite state: all packages pass, go vet is clean, gofmt reports nothing.
+The beacon autotest run over this package recorded 10 of 10 test cases passed.
 
-```
-$ ./bin/agentdesk providers
-commandcode    ready      default=deepseek/deepseek-v4.1-flash
-opencode-go    ready      default=deepseek-v4.1-flash
+## Real provider closure
 
-$ ./bin/agentdesk run -provider opencode-go -p "reply with exactly PONG"
-PONG
+Both configured providers answered a live streaming request with the literal
+token PONG: the OpenCode Go endpoint on opencode.ai and the Command Code
+endpoint on api.commandcode.ai, each in under five seconds and each reporting
+a non-zero usage total. A real tool round trip was also executed end to end
+against OpenCode Go: the model requested the get_time tool, the loop executed
+it, fed the timestamp back, and the model produced the final answer. The
+desktop build produced one Mach-O arm64 executable of about 13 MB, and the app
+window rendered with the persisted session list.
 
-$ ./bin/agentdesk run -provider commandcode -p "reply with exactly PONG"
-PONG
+## Known external flakiness
 
-$ ./bin/agentdesk smoke
-opencode-go    OK   "PONG"  2816ms tokens=49
-commandcode    OK   "PONG"  3267ms tokens=47
-```
+The Command Code endpoint intermittently dropped connections before the
+response headers from this network during verification (measured 4 of 6 and
+then 1 of 5 in two bursts) while OpenCode Go stayed at 100 percent. The same
+autotest run failed one case twice and then passed ten of ten twice with no
+code change. The transport retries a request up to three times on
+transport-level errors before streaming starts, which is safe because nothing
+has been consumed at that point; streaming itself is never replayed. This
+behaviour is covered by TestStreamRetriesOnConnectionDrop.
 
-## 3. Real tool round trip (model → tool → model)
+## Independent review
 
-```
-$ ./bin/agentdesk run -provider opencode-go -p "What time is it in Asia/Tokyo right now? Use the get_time tool."
-I'll check that for you.
-[tool] get_time
-[tool result] 2026-11-04T02:10:08+09:00
-The current time in Asia/Tokyo is **2026-11-04 02:10:08 (JST, UTC+9)**.
-```
-
-## 4. Desktop build
-
-```
-$ wails build
-Built 'build/bin/agentdesk.app/Contents/MacOS/agentdesk' in 36.308s.
-
-$ file build/bin/agentdesk.app/Contents/MacOS/agentdesk
-Mach-O 64-bit executable arm64
-$ ls -lh build/bin/agentdesk.app/Contents/MacOS/agentdesk
-13M
-```
-
-The app was launched and rendered: sidebar with persisted sessions, provider dropdown
-(`commandcode` / `opencode-go`), model dropdown, composer. Screenshot verified during the run.
-
-## 5. Known external flakiness (recorded, not hidden)
-
-`api.commandcode.ai` intermittently drops connections before the response headers from this
-network. Measured 4/6 successes in one burst and 1/5 in another, in a period where
-`opencode.ai` stayed 100%. The same autotest run failed TC-009 twice and then passed 10/10 twice
-without any code change.
-
-Mitigation in the code: `OpenAICompatible.Stream` retries the request up to 3 times on
-transport-level errors before streaming begins (safe — nothing has been consumed yet), covered by
-`TestStreamRetriesOnConnectionDrop`. Streaming itself is never replayed.
-
-## 6. Reproduce
-
-```bash
-cp .env.example .env.local      # fill OPENCODE_GO_API_KEY / COMMAND_CODE_API_KEY
-go test ./...
-./bin/agentdesk smoke
-$HOME/go/bin/wails build
-```
+A separate reviewer that did not write the code returned PASS on all ten
+checks. It raised five findings; four were fixed in the same release (tool
+approval default-deny in the desktop, nil-store guards, an honest availability
+flag in the registry, and a duplicated error emit in the loop). The fifth
+(defensive skipping of malformed stream chunks, and a hand-rolled dotenv
+parser) was accepted and is documented in the review file.
