@@ -90,6 +90,7 @@ func Path() string {
 // Load builds the registry from presets, then the user config file, then the
 // environment.
 func Load() (*provider.Registry, error) {
+	LoadDotEnv()
 	reg := provider.NewRegistry()
 
 	for _, p := range Presets {

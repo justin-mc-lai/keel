@@ -4,7 +4,6 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"flag"
 	"fmt"
@@ -28,7 +27,6 @@ func main() {
 
 // Execute runs one CLI invocation and returns the process exit code.
 func Execute(args []string, out, errOut io.Writer) int {
-	loadDotEnv()
 	if len(args) == 0 {
 		usage(errOut)
 		return 2
@@ -332,33 +330,4 @@ func truncate(s string, n int) string {
 
 func oneLine(s string, n int) string {
 	return truncate(strings.ReplaceAll(strings.TrimSpace(s), "\n", " "), n)
-}
-
-// loadDotEnv reads .env.local then .env from the working directory. Existing
-// environment variables win, so a shell export is never overridden.
-func loadDotEnv() {
-	for _, name := range []string{".env.local", ".env"} {
-		f, err := os.Open(name)
-		if err != nil {
-			continue
-		}
-		sc := bufio.NewScanner(f)
-		for sc.Scan() {
-			line := strings.TrimSpace(sc.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			line = strings.TrimPrefix(line, "export ")
-			k, v, ok := strings.Cut(line, "=")
-			if !ok {
-				continue
-			}
-			k = strings.TrimSpace(k)
-			v = strings.Trim(strings.TrimSpace(v), `"'`)
-			if _, exists := os.LookupEnv(k); !exists {
-				os.Setenv(k, v)
-			}
-		}
-		f.Close()
-	}
 }
