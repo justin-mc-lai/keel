@@ -5,7 +5,8 @@ import {
   Providers, Sessions, History, NewSession, Send, Cancel,
   PermissionState, SetPermissionMode, ResolveApproval,
   Settings as GetSettings, SaveSettings, WorkspaceRoot,
-  RenameSession, DeleteSession, SearchSessions, ExportSession, Retry
+  RenameSession, DeleteSession, SearchSessions, ExportSession, Retry,
+  Tickets as GetTickets, PanelSnapshot, ApplyTicketAction
 } from './transport'
 
 type ProviderInfo = { name: string; defaultModel: string; models: string[]; available: boolean }
@@ -38,6 +39,11 @@ const showSettings = ref(false)
 const workspace = ref('')
 const form = ref({ defaultProvider: '', defaultApproval: 'ask', workspaceRoot: '' })
 const diffs = ref<{ path: string; diff: string }[]>([])
+const view = ref<'chat' | 'board'>('chat')
+const tickets = ref<any[]>([])
+const panel = ref<any>(null)
+const selected = ref<string>('')
+const boardError = ref('')
 
 const EFFORTS = [
   { value: '', label: '思考：默认' },
@@ -114,6 +120,32 @@ async function answer(decision: 'allow_once' | 'allow_session' | 'deny') {
   }
   await refreshPermission()
 }
+
+async function loadBoard() {
+  boardError.value = ''
+  try {
+    tickets.value = (await GetTickets()) ?? []
+    panel.value = await PanelSnapshot(selected.value || undefined)
+  } catch (err) {
+    boardError.value = String(err)
+  }
+}
+
+async function act(id: string, action: string) {
+  try {
+    await ApplyTicketAction(id, action)
+    selected.value = id
+    await loadBoard()
+  } catch (err) {
+    boardError.value = String(err)
+  }
+}
+
+function groupOf(state: string) {
+  return tickets.value.filter((t) => t.state === state)
+}
+
+const STATES = ['open', 'queued', 'working', 'awaiting_person', 'awaiting_review', 'failed', 'ended']
 
 async function openSettings() {
   const s: any = await GetSettings()
@@ -196,6 +228,7 @@ onMounted(async () => {
   }
   workspace.value = await WorkspaceRoot()
   await loadSessions()
+  await loadBoard()
 })
 
 onUnmounted(() => {
@@ -267,7 +300,11 @@ function onKeydown(e: KeyboardEvent) {
   <div class="shell">
     <aside class="sidebar">
       <div class="brand">AgentDesk</div>
-      <button class="new" @click="newChat">+ New chat</button>
+      <div class="nav">
+        <button :class="{ on: view === 'chat' }" @click="view = 'chat'">对话</button>
+        <button :class="{ on: view === 'board' }" @click="view = 'board'; loadBoard()">工单</button>
+      </div>
+      <button v-if="view === 'chat'" class="new" @click="newChat">+ New chat</button>
       <input v-model="query" class="search" placeholder="搜索会话" @input="doSearch" />
       <ul class="sessions">
         <li
@@ -314,7 +351,49 @@ function onKeydown(e: KeyboardEvent) {
         <button class="settings-btn" title="设置" @click="openSettings">⚙</button>
       </header>
 
-      <div class="messages">
+      <div v-if="view === 'board'" class="board">
+        <div v-if="boardError" class="board-error">{{ boardError }}</div>
+        <div class="summary">
+          <div><strong>{{ panel?.needs_me?.length ?? 0 }}</strong><span>需要我处理</span></div>
+          <div><strong>{{ panel?.health?.running ?? 0 }}</strong><span>运行中</span></div>
+          <div><strong>{{ panel?.health?.queued ?? 0 }}</strong><span>排队</span></div>
+          <div><strong>{{ tickets.length }}</strong><span>工单总数</span></div>
+        </div>
+
+        <p v-if="tickets.length === 0" class="board-empty">还没有工单。工单由定时触发或外部事件产生。</p>
+
+        <div v-else class="columns">
+          <section v-for="st in STATES" :key="st" class="column">
+            <h3>{{ st }} <span class="count">{{ groupOf(st).length }}</span></h3>
+            <article
+              v-for="t in groupOf(st)"
+              :key="t.id"
+              class="card"
+              :class="{ active: t.id === selected }"
+              @click="selected = t.id; loadBoard()"
+            >
+              <div class="card-title">{{ t.title || t.id }}</div>
+              <div class="card-meta">{{ t.source }} · {{ t.id }}</div>
+              <div class="card-actions" @click.stop>
+                <button v-if="st === 'awaiting_review'" @click="act(t.id, 'accept')">接受</button>
+                <button v-if="st === 'awaiting_review'" class="warn-btn" @click="act(t.id, 'reject')">拒绝</button>
+                <button v-if="st === 'failed'" @click="act(t.id, 'retry')">重试</button>
+              </div>
+            </article>
+          </section>
+        </div>
+
+        <section v-if="panel?.history?.length" class="history">
+          <h3>工单 {{ selected }} 历史</h3>
+          <ol>
+            <li v-for="(h, i) in panel.history" :key="i">
+              <code>{{ h.event }}</code> {{ h.from }} → {{ h.to }} <em>{{ h.note }}</em>
+            </li>
+          </ol>
+        </section>
+      </div>
+
+      <div v-else class="messages">
         <div v-if="messages.length === 0" class="empty">
           <h1>Local, provider-agnostic, single binary.</h1>
           <p>Pick a provider, type a message, watch tokens stream in-process.</p>
@@ -348,7 +427,7 @@ function onKeydown(e: KeyboardEvent) {
         <p class="approval-hint">等待中，{{ approval.timeoutSec ?? 120 }} 秒后自动拒绝</p>
       </div>
 
-      <footer class="composer">
+      <footer v-if="view === 'chat'" class="composer">
         <textarea
           v-model="input"
           placeholder="Message… (Enter to send, Shift+Enter for newline)"

@@ -47,6 +47,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("POST /api/settings", s.saveSettings)
 	mux.HandleFunc("GET /api/usage", s.usage)
+	mux.HandleFunc("GET /api/tickets", s.tickets)
+	mux.HandleFunc("POST /api/tickets/{id}/actions", s.ticketAction)
+	mux.HandleFunc("GET /api/panel", s.panel)
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("GET /", s.static)
 
@@ -187,6 +190,40 @@ func (s *Server) usage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"byProvider": byProvider, "bySession": bySession})
+}
+
+func (s *Server) tickets(w http.ResponseWriter, r *http.Request) {
+	list, err := s.svc.Tickets()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
+}
+
+func (s *Server) ticketAction(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Action string `json:"action"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad json"})
+		return
+	}
+	t, err := s.svc.ApplyTicketAction(r.PathValue("id"), body.Action)
+	if err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error(), "state": string(t.State)})
+		return
+	}
+	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) panel(w http.ResponseWriter, r *http.Request) {
+	snap, err := s.svc.PanelSnapshot(r.URL.Query().Get("ticket"))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, snap)
 }
 
 // chat streams one turn as Server-Sent Events.

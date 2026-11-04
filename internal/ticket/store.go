@@ -14,14 +14,22 @@ type Store struct {
 	path string
 }
 
+// DefaultPath returns the ticket file location, honouring AGENTDESK_TICKETS.
+func DefaultPath() string {
+	if v := os.Getenv("AGENTDESK_TICKETS"); v != "" {
+		return v
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "tickets.json"
+	}
+	return filepath.Join(home, ".agentdesk", "tickets.json")
+}
+
 // OpenStore prepares the ticket file.
 func OpenStore(path string) (*Store, error) {
 	if path == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, err
-		}
-		path = filepath.Join(home, ".agentdesk", "tickets.json")
+		path = DefaultPath()
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err

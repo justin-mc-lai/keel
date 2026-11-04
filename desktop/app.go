@@ -13,8 +13,10 @@ import (
 
 	"github.com/justin-mc-lai/agentdesk/internal/config"
 	"github.com/justin-mc-lai/agentdesk/internal/core"
+	"github.com/justin-mc-lai/agentdesk/internal/panel"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
+	"github.com/justin-mc-lai/agentdesk/internal/ticket"
 	"github.com/justin-mc-lai/agentdesk/internal/usage"
 )
 
@@ -147,6 +149,19 @@ func (a *App) WorkspaceRoot() string { return a.svc.WorkspaceRoot() }
 
 // MCPStatus reports started servers and failures.
 func (a *App) MCPStatus() map[string]any { return a.svc.MCPStatus() }
+
+// Tickets returns the board data.
+func (a *App) Tickets() ([]ticket.Ticket, error) { return a.svc.Tickets() }
+
+// PanelSnapshot answers the three supervisor questions.
+func (a *App) PanelSnapshot(historyFor string) (panel.Snapshot, error) {
+	return a.svc.PanelSnapshot(historyFor)
+}
+
+// ApplyTicketAction advances one ticket.
+func (a *App) ApplyTicketAction(id, action string) (ticket.Ticket, error) {
+	return a.svc.ApplyTicketAction(id, action)
+}
 
 // Send runs one turn and streams through the Wails event channel.
 func (a *App) Send(sessionID, providerName, model, effort, text string) (string, error) {

@@ -16,6 +16,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/core"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
+	"github.com/justin-mc-lai/agentdesk/internal/ticket"
 )
 
 type fakeProvider struct{}
@@ -231,5 +232,72 @@ func TestApprovalRoundTripOverHTTP(t *testing.T) {
 		case <-wait:
 			t.Fatal("turn did not resume after the approval decision")
 		}
+	}
+}
+
+func TestTicketsAPI(t *testing.T) {
+	t.Setenv("AGENTDESK_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
+	srv, _ := newServer(t)
+
+	// Empty list is a 200 with an empty array, never null.
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/tickets", nil))
+	if rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("empty list: %d %q", rec.Code, rec.Body.String())
+	}
+
+	// Seed one ticket that can accept.
+	st, err := ticket.OpenStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tk := ticket.New("t-501", "review me", "manual", "k1")
+	_ = tk.Apply(ticket.Start, "")
+	_ = tk.Apply(ticket.Submit, "")
+	if err := st.Save(*tk); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/tickets", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "review me") {
+		t.Fatalf("list: %d %q", rec.Code, rec.Body.String())
+	}
+
+	body := `{"action":"accept"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/tickets/t-501/actions", strings.NewReader(body))
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("action: %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "ended") {
+		t.Fatalf("action body = %s", rec.Body.String())
+	}
+}
+
+func TestTicketsEmptyAndError(t *testing.T) {
+	t.Setenv("AGENTDESK_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
+	srv, _ := newServer(t)
+
+	rec := httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/tickets", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("empty should be 200, got %d", rec.Code)
+	}
+
+	// Unknown action is a 4xx, not a panic or a 200.
+	req := httptest.NewRequest(http.MethodPost, "/api/tickets/missing/actions", strings.NewReader(`{"action":"explode"}`))
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, req)
+	if rec.Code < 400 || rec.Code >= 500 {
+		t.Fatalf("bad action status = %d", rec.Code)
+	}
+
+	// Panel works with no tickets at all.
+	rec = httptest.NewRecorder()
+	srv.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/panel", nil))
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "health") {
+		t.Fatalf("panel: %d %q", rec.Code, rec.Body.String())
 	}
 }

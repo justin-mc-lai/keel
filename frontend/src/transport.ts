@@ -153,3 +153,15 @@ async function streamChat(body: Record<string, unknown>): Promise<string> {
   }
   return answer
 }
+
+export const Tickets = () => (isDesktop ? wailsApp.Tickets() : getJSON('/api/tickets'))
+
+export const PanelSnapshot = (ticket?: string) =>
+  isDesktop
+    ? wailsApp.PanelSnapshot(ticket ?? '')
+    : getJSON(`/api/panel${ticket ? `?ticket=${encodeURIComponent(ticket)}` : ''}`)
+
+export const ApplyTicketAction = (id: string, action: string) =>
+  isDesktop
+    ? wailsApp.ApplyTicketAction(id, action)
+    : sendJSON('POST', `/api/tickets/${id}/actions`, { action })

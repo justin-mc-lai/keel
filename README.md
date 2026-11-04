@@ -142,6 +142,15 @@ UI can show what is about to change.
 Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
 `agentdesk stats` prints totals per provider and per session.
 
+## Board
+
+The sidebar switches between **对话** and **工单**. The board groups tickets by
+state, shows the three panel questions as a summary row, and lets you accept,
+reject or retry straight from a card. Clicking a card shows its full history.
+
+Everything comes from the same core service, so the desktop window and the
+browser show the same board.
+
 ## Triggers, tickets, panel
 
 This is the part that makes it a base rather than a chat client.
