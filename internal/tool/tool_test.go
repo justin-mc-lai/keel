@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 func TestUnregisteredToolRejected(t *testing.T) {

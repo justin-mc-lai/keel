@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/perm"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/perm"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 )
 
 // scriptedProvider replays a fixed list of streams in order.

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 func TestSessionPersistsAcrossReopen(t *testing.T) {

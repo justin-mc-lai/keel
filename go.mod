@@ -1,4 +1,4 @@
-module github.com/justin-mc-lai/agentdesk
+module github.com/justin-mc-lai/keel
 
 go 1.26.0
 

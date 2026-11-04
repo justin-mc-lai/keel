@@ -14,16 +14,20 @@ type Store struct {
 	path string
 }
 
-// DefaultPath returns the ticket file location, honouring AGENTDESK_TICKETS.
+// DefaultPath returns the ticket file location, honouring KEEL_TICKETS.
 func DefaultPath() string {
-	if v := os.Getenv("AGENTDESK_TICKETS"); v != "" {
+	if v := os.Getenv("KEEL_STATE_DIR"); v != "" {
+		return filepath.Join(v, "tickets.json")
+	}
+
+	if v := os.Getenv("KEEL_TICKETS"); v != "" {
 		return v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "tickets.json"
 	}
-	return filepath.Join(home, ".agentdesk", "tickets.json")
+	return filepath.Join(home, ".keel", "tickets.json")
 }
 
 // OpenStore prepares the ticket file.

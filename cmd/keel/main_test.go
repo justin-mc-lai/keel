@@ -5,8 +5,8 @@ import (
 	"context"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
 )
 
 type fakeStreamer struct{ reply string }

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"unicode/utf8"
 
-	appcfg "github.com/justin-mc-lai/agentdesk/internal/config"
+	appcfg "github.com/justin-mc-lai/keel/internal/config"
 )
 
 func repoRoot(t *testing.T) string {
@@ -100,7 +100,7 @@ func TestSettingsPersist(t *testing.T) {
 	_ = appcfg.Settings{}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
-	t.Setenv("AGENTDESK_CONFIG", path)
+	t.Setenv("KEEL_CONFIG", path)
 
 	in := appcfg.Settings{
 		DefaultProvider: "commandcode",

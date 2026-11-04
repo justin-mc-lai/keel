@@ -14,7 +14,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 const schema = `
@@ -51,13 +51,13 @@ type Store struct {
 	db *sql.DB
 }
 
-// DefaultPath returns ~/.agentdesk/agentdesk.db.
+// DefaultPath returns ~/.keel/keel.db.
 func DefaultPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return "agentdesk.db"
+		return "keel.db"
 	}
-	return filepath.Join(home, ".agentdesk", "agentdesk.db")
+	return filepath.Join(home, ".keel", "keel.db")
 }
 
 // Open opens (and creates if needed) the database at path.

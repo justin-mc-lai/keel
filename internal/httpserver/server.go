@@ -13,8 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/config"
-	"github.com/justin-mc-lai/agentdesk/internal/core"
+	"github.com/justin-mc-lai/keel/internal/config"
+	"github.com/justin-mc-lai/keel/internal/core"
+	"github.com/justin-mc-lai/keel/internal/obs"
+	"github.com/justin-mc-lai/keel/internal/ticket"
 )
 
 // Server serves the API and the built frontend.
@@ -34,6 +36,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /healthz", s.health)
+	mux.HandleFunc("GET /metrics", s.metrics)
 	mux.HandleFunc("GET /api/providers", s.providers)
 	mux.HandleFunc("GET /api/sessions", s.listSessions)
 	mux.HandleFunc("POST /api/sessions", s.newSession)
@@ -53,7 +56,33 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/chat", s.chat)
 	mux.HandleFunc("GET /", s.static)
 
-	return mux
+	return countRequests(mux)
+}
+
+// RequestName is the Prometheus counter for HTTP requests.
+const RequestName = "keel_http_requests_total"
+
+func countRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		obs.Inc(RequestName)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// metrics renders counters and live gauges.
+func (s *Server) metrics(w http.ResponseWriter, r *http.Request) {
+	if list, err := s.svc.Tickets(); err == nil {
+		byState := map[ticket.State]int{}
+		for _, t := range list {
+			byState[t.State]++
+		}
+		for _, st := range []ticket.State{ticket.Open, ticket.Queued, ticket.Working, ticket.AwaitingPerson, ticket.AwaitingReview, ticket.Failed, ticket.Ended} {
+			state := st
+			obs.Set("keel_tickets_"+string(state), func() int64 { return int64(byState[state]) })
+		}
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = io.WriteString(w, obs.Render())
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

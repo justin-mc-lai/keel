@@ -13,16 +13,20 @@ type Store struct {
 	path string
 }
 
-// DefaultPath returns the run file, honouring AGENTDESK_RUNS.
+// DefaultPath returns the run file, honouring KEEL_RUNS.
 func DefaultPath() string {
-	if v := os.Getenv("AGENTDESK_RUNS"); v != "" {
+	if v := os.Getenv("KEEL_STATE_DIR"); v != "" {
+		return filepath.Join(v, "runs.json")
+	}
+
+	if v := os.Getenv("KEEL_RUNS"); v != "" {
 		return v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "runs.json"
 	}
-	return filepath.Join(home, ".agentdesk", "runs.json")
+	return filepath.Join(home, ".keel", "runs.json")
 }
 
 // OpenStore prepares the run file.

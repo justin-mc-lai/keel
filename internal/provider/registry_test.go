@@ -3,7 +3,7 @@ package provider_test
 import (
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/config"
+	"github.com/justin-mc-lai/keel/internal/config"
 )
 
 func TestRegistryListsProviders(t *testing.T) {

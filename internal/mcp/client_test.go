@@ -9,14 +9,14 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/tool"
 )
 
 // TestMain doubles as an MCP server when the helper env var is set, so the
 // test exercises a real subprocess and a real stdio handshake.
 func TestMain(m *testing.M) {
-	if os.Getenv("AGENTDESK_MCP_HELPER") == "1" {
+	if os.Getenv("KEEL_MCP_HELPER") == "1" {
 		runHelperServer()
 		return
 	}
@@ -91,7 +91,7 @@ func helperConfig() ServerConfig {
 		Name:    "helper",
 		Command: exe,
 		Args:    []string{"-test.run=^$"},
-		Env:     []string{"AGENTDESK_MCP_HELPER=1"},
+		Env:     []string{"KEEL_MCP_HELPER=1"},
 	}
 }
 

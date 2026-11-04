@@ -1,4 +1,4 @@
-// Command agentdesk is the headless entry point. The desktop app and this CLI
+// Command keel is the headless entry point. The desktop app and this CLI
 // share the same provider, tool, store and agent packages; only the transport
 // differs (stdout here, Wails events in the app).
 package main
@@ -6,7 +6,6 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -17,19 +16,22 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/agent"
-	"github.com/justin-mc-lai/agentdesk/internal/config"
-	"github.com/justin-mc-lai/agentdesk/internal/core"
-	"github.com/justin-mc-lai/agentdesk/internal/httpserver"
-	"github.com/justin-mc-lai/agentdesk/internal/mcp"
-	"github.com/justin-mc-lai/agentdesk/internal/panel"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
-	usageledger "github.com/justin-mc-lai/agentdesk/internal/usage"
-	"github.com/justin-mc-lai/agentdesk/internal/workflow"
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/agent"
+	"github.com/justin-mc-lai/keel/internal/appserver"
+	"github.com/justin-mc-lai/keel/internal/backup"
+	"github.com/justin-mc-lai/keel/internal/config"
+	"github.com/justin-mc-lai/keel/internal/core"
+	"github.com/justin-mc-lai/keel/internal/httpserver"
+	"github.com/justin-mc-lai/keel/internal/mcp"
+	"github.com/justin-mc-lai/keel/internal/obs"
+	"github.com/justin-mc-lai/keel/internal/panel"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/tool"
+	usageledger "github.com/justin-mc-lai/keel/internal/usage"
+	"github.com/justin-mc-lai/keel/internal/workflow"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 	fsimpl "io/fs"
 )
 
@@ -64,10 +66,16 @@ func Execute(args []string, out, errOut io.Writer) int {
 		return cmdWorkflow(args[1:], out, errOut)
 	case "runs":
 		return cmdRuns(out, errOut)
+	case "healthcheck":
+		return cmdHealthcheck(out, errOut)
+	case "backup":
+		return cmdBackup(args[1:], out, errOut)
+	case "restore":
+		return cmdRestore(args[1:], out, errOut)
 	case "tickets":
 		return cmdTickets(out, errOut)
 	case "version", "-v", "--version":
-		fmt.Fprintln(out, "agentdesk "+Version)
+		fmt.Fprintln(out, "keel "+Version)
 		return 0
 	case "help", "-h", "--help":
 		usage(out)
@@ -83,21 +91,24 @@ func Execute(args []string, out, errOut io.Writer) int {
 const Version = "0.1.0"
 
 func usage(w io.Writer) {
-	fmt.Fprint(w, `agentdesk — a provider-agnostic desktop LLM agent base
+	fmt.Fprint(w, `keel — a provider-agnostic desktop LLM agent base
 
 usage:
-  agentdesk run -p "prompt" [-provider name] [-model id] [-effort level] [-session id] [-yes]
-  agentdesk providers
-  agentdesk sessions
-  agentdesk history <session-id>
-  agentdesk smoke
-  agentdesk stats
-  agentdesk tickets
-  agentdesk panel [-ticket id] [-json]
-  agentdesk serve [-addr 127.0.0.1:8787] [-assets frontend/dist]
-  agentdesk workflow run <file.json> [-provider name] [-model id]
-  agentdesk runs
-  agentdesk version
+  keel run -p "prompt" [-provider name] [-model id] [-effort level] [-session id] [-yes]
+  keel providers
+  keel sessions
+  keel history <session-id>
+  keel smoke
+  keel stats
+  keel tickets
+  keel panel [-ticket id] [-json]
+  keel serve [-addr 127.0.0.1:8787] [-assets frontend/dist]
+  keel workflow run <file.json> [-provider name] [-model id]
+  keel runs
+  keel healthcheck
+  keel backup <dir>
+  keel restore <backup-dir>
+  keel version
 `)
 }
 
@@ -164,7 +175,7 @@ func cmdRun(args []string, out, errOut io.Writer) int {
 	return 0
 }
 
-// runPrompt is the testable core of `agentdesk run`.
+// runPrompt is the testable core of `keel run`.
 func runPrompt(
 	ctx context.Context,
 	p provider.Provider,
@@ -314,7 +325,7 @@ func cmdSmoke(out, errOut io.Writer) int {
 		stream, err := p.Stream(ctx, provider.Request{
 			Messages:  []provider.Message{{Role: provider.RoleUser, Content: "reply with exactly: PONG"}},
 			MaxTokens: 128,
-			SessionID: "agentdesk-smoke",
+			SessionID: "keel-smoke",
 		})
 		if err != nil {
 			fmt.Fprintf(out, "%-14s FAIL %v\n", name, err)
@@ -511,6 +522,7 @@ func cmdServe(args []string, out, errOut io.Writer) int {
 	fs.SetOutput(errOut)
 	addr := fs.String("addr", "127.0.0.1:8787", "listen address")
 	assetsDir := fs.String("assets", "frontend/dist", "built frontend directory")
+	logJSON := fs.Bool("log-json", false, "emit JSON lines instead of text logs")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -522,24 +534,62 @@ func cmdServe(args []string, out, errOut io.Writer) int {
 		fmt.Fprintf(errOut, "serve: %s not found; run `cd frontend && npm run build`\n", *assetsDir)
 	}
 
+	obs.Init(errOut, *logJSON)
+	log := obs.With("serve")
+
 	svc := core.New()
 	svc.Bootstrap()
 	defer svc.Close()
 
 	srv := httpserver.New(svc, assets)
-	fmt.Fprintf(out, "agentdesk listening on http://%s\n", *addr)
-	httpSrv := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
-	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	log.Info("listening", "addr", *addr, "assets", *assetsDir)
+	fmt.Fprintf(out, "keel listening on http://%s\n", *addr)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := appserver.Run(ctx, *addr, srv.Handler(), appserver.DefaultShutdownGrace); err != nil {
+		log.Error("serve failed", "err", err.Error())
 		fmt.Fprintf(errOut, "serve: %v\n", err)
 		return 1
 	}
+	log.Info("stopped")
+	return 0
+}
+
+// cmdBackup copies the state files into a timestamped directory.
+func cmdBackup(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "usage: keel backup <dir>")
+		return 2
+	}
+	dir, err := backup.Create(args[0], "")
+	if err != nil {
+		fmt.Fprintf(errOut, "backup: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(out, "backup written to %s\n", dir)
+	return 0
+}
+
+// cmdRestore copies a backup back over the state directory.
+func cmdRestore(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 {
+		fmt.Fprintln(errOut, "usage: keel restore <backup-dir>")
+		return 2
+	}
+	n, err := backup.Restore(args[0], "")
+	if err != nil {
+		fmt.Fprintf(errOut, "restore: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(out, "restored %d files\n", n)
 	return 0
 }
 
 // cmdWorkflow runs a configuration-defined DAG.
 func cmdWorkflow(args []string, out, errOut io.Writer) int {
 	if len(args) == 0 || args[0] != "run" {
-		fmt.Fprintln(errOut, "usage: agentdesk workflow run <file.json>")
+		fmt.Fprintln(errOut, "usage: keel workflow run <file.json>")
 		return 2
 	}
 	fs := flag.NewFlagSet("workflow run", flag.ContinueOnError)
@@ -639,6 +689,26 @@ func cmdRuns(out, errOut io.Writer) int {
 	for _, r := range list {
 		fmt.Fprintf(out, "%-9s %-16s %d nodes  %s\n", r.Status, r.Workflow, len(r.Nodes),
 			time.Unix(r.Ended, 0).Format("01-02 15:04"))
+	}
+	return 0
+}
+
+// cmdHealthcheck is the container liveness probe: it asks the local server.
+func cmdHealthcheck(out, errOut io.Writer) int {
+	addr := os.Getenv("KEEL_HEALTH_URL")
+	if addr == "" {
+		addr = "http://127.0.0.1:8787/healthz"
+	}
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Get(addr)
+	if err != nil {
+		fmt.Fprintf(errOut, "healthcheck: %v\n", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		fmt.Fprintf(errOut, "healthcheck: status %d\n", resp.StatusCode)
+		return 1
 	}
 	return 0
 }

@@ -37,7 +37,7 @@ func NewLocal(path string) (*Local, error) {
 		if err != nil {
 			return nil, err
 		}
-		path = filepath.Join(home, ".agentdesk", "channel.jsonl")
+		path = filepath.Join(home, ".keel", "channel.jsonl")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err

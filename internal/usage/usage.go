@@ -49,13 +49,17 @@ type Ledger struct {
 	path string
 }
 
-// DefaultPath returns ~/.agentdesk/usage.jsonl.
+// DefaultPath returns ~/.keel/usage.jsonl.
 func DefaultPath() string {
+	if v := os.Getenv("KEEL_STATE_DIR"); v != "" {
+		return filepath.Join(v, "usage.jsonl")
+	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "usage.jsonl"
 	}
-	return filepath.Join(home, ".agentdesk", "usage.jsonl")
+	return filepath.Join(home, ".keel", "usage.jsonl")
 }
 
 // Open prepares the ledger file.

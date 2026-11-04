@@ -196,7 +196,7 @@ async function exportSession(id: string) {
   const blob = new Blob([raw], { type: 'application/json' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = `agentdesk-${id}.json`
+  a.download = `keel-${id}.json`
   a.click()
   URL.revokeObjectURL(a.href)
 }
@@ -299,7 +299,7 @@ function onKeydown(e: KeyboardEvent) {
 <template>
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand">AgentDesk</div>
+      <div class="brand">Keel</div>
       <div class="nav">
         <button :class="{ on: view === 'chat' }" @click="view = 'chat'">对话</button>
         <button :class="{ on: view === 'board' }" @click="view = 'board'; loadBoard()">工单</button>

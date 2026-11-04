@@ -10,7 +10,7 @@ import (
 // LoadDotEnv reads keys from local dotenv files. Existing environment
 // variables always win, so a shell export is never overridden.
 //
-// Order: ./.env.local, ./.env, then ~/.agentdesk/.env. The last one exists
+// Order: ./.env.local, ./.env, then ~/.keel/.env. The last one exists
 // because a GUI launch has no useful working directory and inherits no shell
 // exports — without it the desktop app can never authenticate.
 func LoadDotEnv() {
@@ -22,7 +22,7 @@ func LoadDotEnv() {
 func dotEnvPaths() []string {
 	paths := []string{".env.local", ".env"}
 	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".agentdesk", ".env"))
+		paths = append(paths, filepath.Join(home, ".keel", ".env"))
 	}
 	return paths
 }

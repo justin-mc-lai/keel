@@ -49,7 +49,7 @@ func OpenLedger(path string) (*Ledger, error) {
 		if err != nil {
 			return nil, err
 		}
-		path = filepath.Join(home, ".agentdesk", "triggers.jsonl")
+		path = filepath.Join(home, ".keel", "triggers.jsonl")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, err

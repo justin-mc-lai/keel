@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/diff"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/diff"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 )
 
 func TestDiffPreviewBeforeWrite(t *testing.T) {

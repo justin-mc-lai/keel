@@ -3,8 +3,8 @@ package core
 import (
 	"fmt"
 
-	"github.com/justin-mc-lai/agentdesk/internal/panel"
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/panel"
+	"github.com/justin-mc-lai/keel/internal/ticket"
 )
 
 // ticketStore opens the ticket file. It is cheap: the file is small.

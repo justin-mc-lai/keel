@@ -154,7 +154,7 @@ func defaultHTTP(ctx context.Context, url string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("User-Agent", "agentdesk-workflow")
+	req.Header.Set("User-Agent", "keel-workflow")
 	resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 	if err != nil {
 		return "", err

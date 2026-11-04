@@ -13,8 +13,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/justin-mc-lai/agentdesk/internal/mcp"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/mcp"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 // Preset is a vendor definition shipped with the binary. API keys are never
@@ -79,16 +79,16 @@ type FileProvider struct {
 	Models        []string          `json:"models"`
 }
 
-// Path returns the user config location, honouring AGENTDESK_CONFIG.
+// Path returns the user config location, honouring KEEL_CONFIG.
 func Path() string {
-	if v := os.Getenv("AGENTDESK_CONFIG"); v != "" {
+	if v := os.Getenv("KEEL_CONFIG"); v != "" {
 		return v
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, ".agentdesk", "config.json")
+	return filepath.Join(home, ".keel", "config.json")
 }
 
 // LoadFile reads the raw user config file, returning an empty value when it
@@ -140,7 +140,7 @@ func Load() (*provider.Registry, error) {
 		}
 	}
 
-	if v := os.Getenv("AGENTDESK_PROVIDER"); v != "" {
+	if v := os.Getenv("KEEL_PROVIDER"); v != "" {
 		reg.SetDefault(v)
 	}
 	return reg, nil

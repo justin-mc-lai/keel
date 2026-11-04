@@ -16,7 +16,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/tool"
 )
 
 // ProtocolVersion is the MCP revision this client speaks.
@@ -91,7 +91,7 @@ func Start(cfg ServerConfig) (*Client, error) {
 	initParams := map[string]any{
 		"protocolVersion": ProtocolVersion,
 		"capabilities":    map[string]any{},
-		"clientInfo":      map[string]any{"name": "agentdesk", "version": tool.Version},
+		"clientInfo":      map[string]any{"name": "keel", "version": tool.Version},
 	}
 	if _, err := c.call(context.Background(), "initialize", initParams); err != nil {
 		c.Close()

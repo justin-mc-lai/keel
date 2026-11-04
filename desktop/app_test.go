@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
 )
 
 func TestStreamEventsWired(t *testing.T) {
@@ -50,7 +50,7 @@ func TestWailsConfigPointsAtSingleEntry(t *testing.T) {
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Name != "agentdesk" || cfg.OutputFilename != "agentdesk" {
+	if cfg.Name != "keel" || cfg.OutputFilename != "keel" {
 		t.Fatalf("wails.json = %+v", cfg)
 	}
 }

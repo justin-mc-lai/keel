@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/config"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/config"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 func TestLiveProviders(t *testing.T) {
@@ -41,7 +41,7 @@ func TestLiveProviders(t *testing.T) {
 			stream, err := p.Stream(ctx, provider.Request{
 				Messages:  []provider.Message{{Role: provider.RoleUser, Content: "reply with exactly: PONG"}},
 				MaxTokens: 128,
-				SessionID: "agentdesk-smoke",
+				SessionID: "keel-smoke",
 			})
 			if err != nil {
 				t.Fatalf("stream start: %v", err)

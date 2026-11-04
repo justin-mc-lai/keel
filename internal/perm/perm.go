@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/tool"
 )
 
 // Mode is the permission tier.

@@ -14,16 +14,16 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/justin-mc-lai/agentdesk/internal/agent"
-	"github.com/justin-mc-lai/agentdesk/internal/config"
-	"github.com/justin-mc-lai/agentdesk/internal/diff"
-	"github.com/justin-mc-lai/agentdesk/internal/mcp"
-	"github.com/justin-mc-lai/agentdesk/internal/perm"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
-	"github.com/justin-mc-lai/agentdesk/internal/usage"
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/agent"
+	"github.com/justin-mc-lai/keel/internal/config"
+	"github.com/justin-mc-lai/keel/internal/diff"
+	"github.com/justin-mc-lai/keel/internal/mcp"
+	"github.com/justin-mc-lai/keel/internal/perm"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/usage"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 )
 
 // Event names shared by every transport.

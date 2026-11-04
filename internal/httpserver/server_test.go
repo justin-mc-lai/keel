@@ -13,10 +13,10 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/core"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/core"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/ticket"
 )
 
 type fakeProvider struct{}
@@ -73,12 +73,12 @@ func TestStaticServesFrontend(t *testing.T) {
 	}
 
 	// With assets: index.html is served, and unknown routes fall back to it.
-	assets := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<html>agentdesk</html>")}}
+	assets := fstest.MapFS{"index.html": &fstest.MapFile{Data: []byte("<html>keel</html>")}}
 	srv2 := New(srv.svc, assets)
 	for _, path := range []string{"/", "/some/spa/route"} {
 		rec := httptest.NewRecorder()
 		srv2.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
-		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "agentdesk") {
+		if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), "keel") {
 			t.Fatalf("%s -> %d %q", path, rec.Code, rec.Body.String())
 		}
 	}
@@ -236,7 +236,7 @@ func TestApprovalRoundTripOverHTTP(t *testing.T) {
 }
 
 func TestTicketsAPI(t *testing.T) {
-	t.Setenv("AGENTDESK_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
+	t.Setenv("KEEL_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
 	srv, _ := newServer(t)
 
 	// Empty list is a 200 with an empty array, never null.
@@ -277,7 +277,7 @@ func TestTicketsAPI(t *testing.T) {
 }
 
 func TestTicketsEmptyAndError(t *testing.T) {
-	t.Setenv("AGENTDESK_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
+	t.Setenv("KEEL_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
 	srv, _ := newServer(t)
 
 	rec := httptest.NewRecorder()

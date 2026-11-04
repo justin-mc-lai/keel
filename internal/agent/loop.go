@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/tool"
 )
 
 // DefaultSystemPrompt keeps the assistant grounded in what it can actually do.

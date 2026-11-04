@@ -1,4 +1,7 @@
-# AgentDesk
+# Keel
+
+> 定位与演进见 [docs/vision/agent-base-positioning.md](docs/vision/agent-base-positioning.md)。
+> 旧名 AgentDesk，2026-11 更名为 Keel。
 
 A desktop LLM agent base in Go: **one binary, no Node runtime, no Python, no local HTTP server.**
 
@@ -22,15 +25,15 @@ Non-goals for v0.1: multi-agent orchestration, MCP client, image/voice, vendor-n
 ## Quick start
 
 ```bash
-git clone https://github.com/justin-mc-lai/agentdesk
-cd agentdesk
+git clone https://github.com/justin-mc-lai/keel
+cd keel
 
 cp .env.example .env.local     # then fill in one provider key
-go build -o agentdesk ./cmd/agentdesk
+go build -o keel ./cmd/keel
 
-./agentdesk providers
-./agentdesk run -p "reply with exactly PONG"
-./agentdesk smoke
+./keel providers
+./keel run -p "reply with exactly PONG"
+./keel smoke
 ```
 
 Desktop app:
@@ -38,7 +41,7 @@ Desktop app:
 ```bash
 go install github.com/wailsapp/wails/v2/cmd/wails@latest
 wails build
-open build/bin/agentdesk.app
+open build/bin/keel.app
 ```
 
 ## Providers
@@ -50,7 +53,7 @@ Two presets ship with the binary. Keys come from the environment (or a gitignore
 | `opencode-go` | `https://opencode.ai/zen/go/v1` | `OPENCODE_GO_API_KEY` | sends `x-opencode-session` per conversation |
 | `commandcode` | `https://api.commandcode.ai/provider/v1` | `COMMAND_CODE_API_KEY` | forces a direct connection; long streams break behind a local proxy |
 
-Add or override providers in `~/.agentdesk/config.json` (or the path in `AGENTDESK_CONFIG`):
+Add or override providers in `~/.keel/config.json` (or the path in `KEEL_CONFIG`):
 
 ```json
 {
@@ -76,8 +79,8 @@ The same frontend build runs in both places:
 
 ```bash
 wails build                    # desktop window
-agentdesk serve                # browser at http://127.0.0.1:8787
-agentdesk serve -addr :9000 -assets frontend/dist
+keel serve                # browser at http://127.0.0.1:8787
+keel serve -addr :9000 -assets frontend/dist
 ```
 
 `internal/core` holds every piece of logic and imports no UI package. The Wails
@@ -128,7 +131,7 @@ alone, so an email address never breaks a message.
 `AGENTS.md` at the workspace root is appended to the system prompt for every
 turn.
 
-Set the root with `agentdesk run -w /path` or in the desktop settings panel.
+Set the root with `keel run -w /path` or in the desktop settings panel.
 
 ## Long commands, diffs, cost
 
@@ -139,8 +142,35 @@ Jobs have a 30-minute lifetime and their process group dies with them.
 `write_file` and `edit_file` emit a unified diff before touching disk, so the
 UI can show what is about to change.
 
-Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
-`agentdesk stats` prints totals per provider and per session.
+Every call's token usage is appended to `~/.keel/usage.jsonl`.
+`keel stats` prints totals per provider and per session.
+
+## Running it
+
+```bash
+keel serve -addr 0.0.0.0:8787 -log-json
+```
+
+| Endpoint | Purpose |
+|---|---|
+| `/healthz` | liveness JSON |
+| `/metrics` | Prometheus text: requests, tickets per state |
+
+Logs are JSON lines (`time`, `level`, `component`, `msg`) when `-log-json` is
+set. SIGTERM stops accepting new requests, drains for up to 10 seconds, logs
+`stopped`, and exits 0.
+
+State lives in `KEEL_STATE_DIR` (default `~/.keel`): the session
+database, tickets, runs, usage and channel files.
+
+```bash
+keel backup /backups     # timestamped directory + manifest
+keel restore /backups/keel-20261105-000053
+```
+
+A `Dockerfile` is included (multi-stage, distroless, non-root, CGO off). Its
+image build is **not verified** — the Docker daemon was not running on the
+machine that produced this release.
 
 ## Workflows
 
@@ -161,12 +191,12 @@ the run.
 ```
 
 ```bash
-agentdesk workflow run flow.json -provider opencode-go
-agentdesk runs
+keel workflow run flow.json -provider opencode-go
+keel runs
 ```
 
 Node types: `http`, `agent`, `delay`. `{{node-id}}` substitutes a previous
-node's output. Every run is appended to `~/.agentdesk/runs.json` with per-node
+node's output. Every run is appended to `~/.keel/runs.json` with per-node
 status, attempts, timing and error text.
 
 Validation happens before anything executes: duplicate ids, unknown
@@ -206,19 +236,19 @@ tickets run at once; the rest queue and start automatically when a slot frees.
 
 Finished tickets write one record through a **Channel** (local file by default).
 
-`agentdesk panel` answers three questions: what needs me, is the system healthy,
+`keel panel` answers three questions: what needs me, is the system healthy,
 and what happened to one ticket.
 
 ```bash
-agentdesk tickets
-agentdesk panel
-agentdesk panel -ticket <id>
-agentdesk panel -json
+keel tickets
+keel panel
+keel panel -ticket <id>
+keel panel -json
 ```
 
 ## MCP servers
 
-stdio servers are configured in `~/.agentdesk/config.json`:
+stdio servers are configured in `~/.keel/config.json`:
 
 ```json
 {
@@ -249,11 +279,11 @@ The approval window is bounded on purpose: the call blocks the agent loop, so an
 ## CLI
 
 ```bash
-agentdesk run -p "…" [-provider name] [-model id] [-effort level] [-session id] [-yes]
-agentdesk providers
-agentdesk sessions
-agentdesk history <session-id>
-agentdesk smoke
+keel run -p "…" [-provider name] [-model id] [-effort level] [-session id] [-yes]
+keel providers
+keel sessions
+keel history <session-id>
+keel smoke
 ```
 
 `run` streams tokens to stdout, persists the conversation to SQLite, and prints the session id on stderr so it stays out of piped output. `-yes` auto-approves gated tools; without it a gated call is denied and the model is told so. `-effort` maps to `reasoning_effort` (off / low / medium / high) and is omitted when unset.

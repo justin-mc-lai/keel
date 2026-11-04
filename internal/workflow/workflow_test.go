@@ -139,7 +139,7 @@ func TestEngineNodesAndTemplates(t *testing.T) {
 
 func TestRunRecordPersisted(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "runs.json")
-	t.Setenv("AGENTDESK_RUNS", path)
+	t.Setenv("KEEL_RUNS", path)
 
 	d := def(Node{ID: "a", Type: NodeDelay, Duration: "1ms"})
 	run := Execute(context.Background(), d, Deps{})

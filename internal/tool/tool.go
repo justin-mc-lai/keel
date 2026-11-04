@@ -14,8 +14,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/jobs"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/jobs"
+	"github.com/justin-mc-lai/keel/internal/provider"
 )
 
 // ErrUnknownTool is returned for a call the registry does not know.

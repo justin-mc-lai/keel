@@ -11,13 +11,13 @@ import (
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"github.com/justin-mc-lai/agentdesk/internal/config"
-	"github.com/justin-mc-lai/agentdesk/internal/core"
-	"github.com/justin-mc-lai/agentdesk/internal/panel"
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
-	"github.com/justin-mc-lai/agentdesk/internal/usage"
+	"github.com/justin-mc-lai/keel/internal/config"
+	"github.com/justin-mc-lai/keel/internal/core"
+	"github.com/justin-mc-lai/keel/internal/panel"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/usage"
 )
 
 // Event names, re-exported for the frontend bindings and tests.

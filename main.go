@@ -8,7 +8,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/options"
 	"github.com/wailsapp/wails/v2/pkg/options/assetserver"
 
-	"github.com/justin-mc-lai/agentdesk/desktop"
+	"github.com/justin-mc-lai/keel/desktop"
 )
 
 //go:embed all:frontend/dist
@@ -18,7 +18,7 @@ func main() {
 	app := desktop.New()
 
 	err := wails.Run(&options.App{
-		Title:            "AgentDesk",
+		Title:            "Keel",
 		Width:            1180,
 		Height:           820,
 		MinWidth:         860,

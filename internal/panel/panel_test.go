@@ -3,7 +3,7 @@ package panel
 import (
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/ticket"
 )
 
 func TestPanelAnswersThreeQuestions(t *testing.T) {

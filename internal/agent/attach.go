@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 )
 
 // attachRe matches pi-style @path references.

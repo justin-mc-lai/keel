@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/justin-mc-lai/agentdesk/internal/provider"
-	"github.com/justin-mc-lai/agentdesk/internal/store"
-	"github.com/justin-mc-lai/agentdesk/internal/ticket"
+	"github.com/justin-mc-lai/keel/internal/provider"
+	"github.com/justin-mc-lai/keel/internal/store"
+	"github.com/justin-mc-lai/keel/internal/ticket"
 )
 
 type fakeProvider struct{}
@@ -107,7 +107,7 @@ func seedTicket(t *testing.T, id string, apply ...ticket.Event) {
 
 func isolatedTickets(t *testing.T) {
 	t.Helper()
-	t.Setenv("AGENTDESK_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
+	t.Setenv("KEEL_TICKETS", filepath.Join(t.TempDir(), "tickets.json"))
 }
 
 func TestTicketsListAndHistory(t *testing.T) {

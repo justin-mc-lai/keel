@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	"github.com/justin-mc-lai/keel/internal/workspace"
 )
 
 const (
@@ -230,7 +230,7 @@ func (r *Registry) builtins(ws *workspace.Workspace) []Tool {
 				if err != nil {
 					return "", err
 				}
-				req.Header.Set("User-Agent", "agentdesk/"+Version)
+				req.Header.Set("User-Agent", "keel/"+Version)
 				resp, err := (&http.Client{Timeout: 20 * time.Second}).Do(req)
 				if err != nil {
 					return "", err
