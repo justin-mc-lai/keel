@@ -176,3 +176,87 @@ body {
 .approval-actions button.deny { border-color: #8a3232; color: #ffb4b4; }
 .approval-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .queued { margin-left: auto; color: var(--muted); font-size: 12px; }
+
+.search {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
+
+.sessions li { display: flex; align-items: center; gap: 6px; justify-content: space-between; }
+.sessions .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-actions { display: none; gap: 2px; }
+.sessions li:hover .row-actions { display: flex; }
+.row-actions button {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 3px;
+  font-size: 13px;
+}
+.row-actions button:hover { color: var(--text); }
+
+.settings-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.settings-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.composer button.retry {
+  width: 44px;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+.composer button.retry:disabled { opacity: .4; cursor: default; }
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+}
+.panel {
+  width: 460px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.panel h2 { margin: 0 0 4px; font-size: 16px; }
+.panel label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--muted); }
+.panel input, .panel select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px;
+  font-family: inherit;
+}
+.panel .hint { margin: 0; color: var(--muted); font-size: 12px; }
+.panel-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.panel-actions button {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+.panel-actions button.primary { background: var(--accent); color: #0d1526; border: none; font-weight: 600; }

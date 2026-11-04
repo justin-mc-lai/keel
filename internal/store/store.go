@@ -199,3 +199,99 @@ func newID() (string, error) {
 	}
 	return "s_" + hex.EncodeToString(b), nil
 }
+
+// RenameSession sets a conversation's title.
+func (s *Store) RenameSession(id, title string) error {
+	_, err := s.db.Exec(`UPDATE sessions SET title=?, updated_at=? WHERE id=?`, title, time.Now().Unix(), id)
+	if err != nil {
+		return fmt.Errorf("store: rename: %w", err)
+	}
+	return nil
+}
+
+// DeleteSession removes a conversation and its messages.
+func (s *Store) DeleteSession(id string) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`DELETE FROM messages WHERE session_id=?`, id); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`DELETE FROM sessions WHERE id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// SearchSessions matches session titles, newest first.
+func (s *Store) SearchSessions(q string) ([]Session, error) {
+	rows, err := s.db.Query(
+		`SELECT id, title, created_at, updated_at FROM sessions
+		 WHERE title LIKE ? ORDER BY updated_at DESC`, "%"+q+"%")
+	if err != nil {
+		return nil, fmt.Errorf("store: search: %w", err)
+	}
+	defer rows.Close()
+	var out []Session
+	for rows.Next() {
+		var it Session
+		if err := rows.Scan(&it.ID, &it.Title, &it.CreatedAt, &it.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, it)
+	}
+	return out, rows.Err()
+}
+
+// Export is the portable form of one conversation.
+type Export struct {
+	Session  Session            `json:"session"`
+	Messages []provider.Message `json:"messages"`
+}
+
+// ExportSession serialises one conversation as JSON.
+func (s *Store) ExportSession(id string) ([]byte, error) {
+	list, err := s.ListSessions()
+	if err != nil {
+		return nil, err
+	}
+	var found *Session
+	for i := range list {
+		if list[i].ID == id {
+			found = &list[i]
+			break
+		}
+	}
+	if found == nil {
+		return nil, fmt.Errorf("store: session %s not found", id)
+	}
+	msgs, err := s.Messages(id)
+	if err != nil {
+		return nil, err
+	}
+	return json.MarshalIndent(Export{Session: *found, Messages: msgs}, "", "  ")
+}
+
+// LastUserMessage returns the id and text of the newest user message.
+func (s *Store) LastUserMessage(sessionID string) (int64, string, error) {
+	var id int64
+	var content string
+	err := s.db.QueryRow(
+		`SELECT id, content FROM messages WHERE session_id=? AND role=? ORDER BY id DESC LIMIT 1`,
+		sessionID, provider.RoleUser).Scan(&id, &content)
+	if err != nil {
+		return 0, "", fmt.Errorf("store: last user message: %w", err)
+	}
+	return id, content, nil
+}
+
+// TruncateAfter deletes every message newer than id. Used by retry.
+func (s *Store) TruncateAfter(sessionID string, id int64) error {
+	_, err := s.db.Exec(`DELETE FROM messages WHERE session_id=? AND id>?`, sessionID, id)
+	if err != nil {
+		return fmt.Errorf("store: truncate: %w", err)
+	}
+	return nil
+}

@@ -24,6 +24,7 @@ type Options struct {
 	Store         *store.Store
 	Model         string
 	Effort        string
+	Instructions  string
 	SystemPrompt  string
 	MaxIterations int
 	OnEvent       func(provider.Event)
@@ -67,8 +68,8 @@ func (l *Loop) Run(ctx context.Context, sessionID, input string) (string, error)
 		return "", err
 	}
 	msgs := make([]provider.Message, 0, len(history)+1)
-	if l.opt.SystemPrompt != "" {
-		msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: l.opt.SystemPrompt})
+	if sys := l.systemPrompt(); sys != "" {
+		msgs = append(msgs, provider.Message{Role: provider.RoleSystem, Content: sys})
 	}
 	msgs = append(msgs, history...)
 
@@ -141,6 +142,18 @@ func (l *Loop) Run(ctx context.Context, sessionID, input string) (string, error)
 	}
 
 	return "", fmt.Errorf("agent: exceeded %d iterations without a final answer", l.opt.MaxIterations)
+}
+
+// systemPrompt merges the built-in prompt with the workspace AGENTS.md text.
+func (l *Loop) systemPrompt() string {
+	sys := strings.TrimSpace(l.opt.SystemPrompt)
+	if ins := strings.TrimSpace(l.opt.Instructions); ins != "" {
+		if sys != "" {
+			sys += "\n\n"
+		}
+		sys += "# Workspace instructions (AGENTS.md)\n" + ins
+	}
+	return sys
 }
 
 func (l *Loop) tools() []provider.ToolSpec {

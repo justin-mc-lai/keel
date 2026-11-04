@@ -3,7 +3,9 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
 import {
   Providers, Sessions, History, NewSession, Send, Cancel,
-  PermissionState, SetPermissionMode, ResolveApproval
+  PermissionState, SetPermissionMode, ResolveApproval,
+  Settings as GetSettings, SaveSettings, WorkspaceRoot,
+  RenameSession, DeleteSession, SearchSessions, ExportSession, Retry
 } from '../wailsjs/go/desktop/App'
 
 type ProviderInfo = { name: string; defaultModel: string; models: string[]; available: boolean }
@@ -31,6 +33,10 @@ const messages = ref<Msg[]>([])
 const input = ref('')
 const busy = ref(false)
 const status = ref('')
+const query = ref('')
+const showSettings = ref(false)
+const workspace = ref('')
+const form = ref({ defaultProvider: '', defaultApproval: 'ask', workspaceRoot: '' })
 
 const EFFORTS = [
   { value: '', label: '思考：默认' },
@@ -102,6 +108,74 @@ async function answer(decision: 'allow_once' | 'allow_session' | 'deny') {
   await refreshPermission()
 }
 
+async function openSettings() {
+  const s: any = await GetSettings()
+  form.value = {
+    defaultProvider: s.defaultProvider ?? '',
+    defaultApproval: s.defaultApproval ?? 'ask',
+    workspaceRoot: s.workspaceRoot ?? ''
+  }
+  workspace.value = await WorkspaceRoot()
+  showSettings.value = true
+}
+
+async function saveSettings() {
+  const saved: any = await SaveSettings(form.value)
+  form.value = {
+    defaultProvider: saved.defaultProvider ?? '',
+    defaultApproval: saved.defaultApproval ?? 'ask',
+    workspaceRoot: saved.workspaceRoot ?? ''
+  }
+  workspace.value = await WorkspaceRoot()
+  await refreshPermission()
+  showSettings.value = false
+}
+
+async function doSearch() {
+  sessions.value = (await SearchSessions(query.value)) ?? []
+}
+
+async function renameSession(id: string, current: string) {
+  const title = window.prompt('会话标题', current || 'Untitled')
+  if (title === null) return
+  await RenameSession(id, title)
+  await loadSessions()
+}
+
+async function removeSession(id: string) {
+  if (!window.confirm('删除这个会话？')) return
+  await DeleteSession(id)
+  if (sessionId.value === id) {
+    sessionId.value = ''
+    messages.value = []
+  }
+  await loadSessions()
+}
+
+async function exportSession(id: string) {
+  const raw = await ExportSession(id)
+  const blob = new Blob([raw], { type: 'application/json' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = `agentdesk-${id}.json`
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
+
+async function retry() {
+  if (!sessionId.value || busy.value) return
+  busy.value = true
+  status.value = 'retrying'
+  try {
+    await Retry(sessionId.value, provider.value, model.value, effort.value)
+  } catch (err) {
+    status.value = String(err)
+  } finally {
+    busy.value = false
+    await loadSessions()
+  }
+}
+
 onMounted(async () => {
   EventsOn('chat:event', onStream)
   EventsOn('tool:approval', onApproval)
@@ -112,6 +186,7 @@ onMounted(async () => {
     provider.value = ready.name
     model.value = ready.defaultModel
   }
+  workspace.value = await WorkspaceRoot()
   await loadSessions()
 })
 
@@ -184,6 +259,7 @@ function onKeydown(e: KeyboardEvent) {
     <aside class="sidebar">
       <div class="brand">AgentDesk</div>
       <button class="new" @click="newChat">+ New chat</button>
+      <input v-model="query" class="search" placeholder="搜索会话" @input="doSearch" />
       <ul class="sessions">
         <li
           v-for="s in sessions"
@@ -191,7 +267,12 @@ function onKeydown(e: KeyboardEvent) {
           :class="{ active: s.id === sessionId }"
           @click="openSession(s.id)"
         >
-          {{ s.title || 'Untitled' }}
+          <span class="title">{{ s.title || 'Untitled' }}</span>
+          <span class="row-actions" @click.stop>
+            <button title="重命名" @click="renameSession(s.id, s.title)">✎</button>
+            <button title="导出" @click="exportSession(s.id)">↓</button>
+            <button title="删除" @click="removeSession(s.id)">×</button>
+          </span>
         </li>
       </ul>
     </aside>
@@ -221,6 +302,7 @@ function onKeydown(e: KeyboardEvent) {
         </select>
         <span v-if="permission.warning" class="warn">BYPASS · 工具不再询问</span>
         <span class="status">{{ status }}</span>
+        <button class="settings-btn" title="设置" @click="openSettings">⚙</button>
       </header>
 
       <div class="messages">
@@ -258,9 +340,35 @@ function onKeydown(e: KeyboardEvent) {
           placeholder="Message… (Enter to send, Shift+Enter for newline)"
           @keydown="onKeydown"
         />
+        <button class="retry" title="重试上一轮" :disabled="busy || !sessionId" @click="retry">↻</button>
         <button v-if="!busy" @click="send">Send</button>
         <button v-else class="stop" @click="stop">Stop</button>
       </footer>
     </main>
+
+    <div v-if="showSettings" class="overlay" @click.self="showSettings = false">
+      <div class="panel">
+        <h2>设置</h2>
+        <label>默认 provider
+          <input v-model="form.defaultProvider" placeholder="opencode-go / commandcode" />
+        </label>
+        <label>默认审批档
+          <select v-model="form.defaultApproval">
+            <option value="ask">每次都问</option>
+            <option value="allow">本会话放行</option>
+            <option value="bypass">全部放行</option>
+          </select>
+        </label>
+        <label>工作区根目录
+          <input v-model="form.workspaceRoot" placeholder="/path/to/project" />
+        </label>
+        <p class="hint">当前生效：{{ workspace }}</p>
+        <p class="hint">文件工具只能访问这个目录。AGENTS.md 会被自动读入。</p>
+        <div class="panel-actions">
+          <button @click="showSettings = false">取消</button>
+          <button class="primary" @click="saveSettings">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>

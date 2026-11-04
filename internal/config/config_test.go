@@ -1,12 +1,15 @@
 package config_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
+
+	appcfg "github.com/justin-mc-lai/agentdesk/internal/config"
 )
 
 func repoRoot(t *testing.T) string {
@@ -90,5 +93,50 @@ func TestSecretsNeverCommitted(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestSettingsPersist(t *testing.T) {
+	_ = appcfg.Settings{}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	t.Setenv("AGENTDESK_CONFIG", path)
+
+	in := appcfg.Settings{
+		DefaultProvider: "commandcode",
+		DefaultApproval: "allow",
+		WorkspaceRoot:   "/tmp/project",
+	}
+	if err := appcfg.SaveSettings(in); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	got := appcfg.LoadSettings()
+	if got != in {
+		t.Fatalf("round trip = %+v, want %+v", got, in)
+	}
+
+	// Saving again must not drop provider entries written by other tools.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc["providers"] = []any{map[string]any{"name": "keep-me"}}
+	merged, _ := json.Marshal(doc)
+	if err := os.WriteFile(path, merged, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := appcfg.SaveSettings(appcfg.Settings{DefaultApproval: "bypass"}); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = os.ReadFile(path)
+	if !strings.Contains(string(raw), "keep-me") {
+		t.Fatalf("provider entry lost: %s", raw)
+	}
+	if appcfg.LoadSettings().DefaultApproval != "bypass" {
+		t.Fatal("approval not merged")
 	}
 }

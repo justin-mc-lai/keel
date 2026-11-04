@@ -19,6 +19,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 )
 
 func main() {
@@ -80,6 +81,7 @@ func cmdRun(args []string, out, errOut io.Writer) int {
 	session := fs.String("session", "", "session id to continue (default: new session)")
 	approve := fs.Bool("yes", false, "auto-approve tools that require approval")
 	effort := fs.String("effort", "", "reasoning effort: off, low, medium, high")
+	wsRoot := fs.String("w", "", "workspace root (default: current directory)")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -121,7 +123,7 @@ func cmdRun(args []string, out, errOut io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	answer, err := runPrompt(ctx, p, st, sid, *prompt, *model, *effort, *approve, out)
+	answer, err := runPrompt(ctx, p, st, sid, *prompt, *model, *effort, *wsRoot, *approve, out)
 	if err != nil {
 		fmt.Fprintf(errOut, "\nrun: %v\n", err)
 		return 1
@@ -138,21 +140,26 @@ func runPrompt(
 	ctx context.Context,
 	p provider.Provider,
 	st *store.Store,
-	sessionID, prompt, model, effort string,
+	sessionID, prompt, model, effort, wsRoot string,
 	autoApprove bool,
 	out io.Writer,
 ) (string, error) {
-	tools, err := tool.NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return autoApprove })
+	ws, err := workspace.Open(wsRoot)
+	if err != nil {
+		return "", err
+	}
+	tools, err := tool.NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return autoApprove }, ws)
 	if err != nil {
 		return "", err
 	}
 
 	loop := agent.New(agent.Options{
-		Provider: p,
-		Tools:    tools,
-		Store:    st,
-		Model:    model,
-		Effort:   effort,
+		Provider:     p,
+		Tools:        tools,
+		Store:        st,
+		Model:        model,
+		Effort:       effort,
+		Instructions: ws.Instructions(),
 		OnEvent: func(ev provider.Event) {
 			switch ev.Type {
 			case provider.EventContent:

@@ -11,6 +11,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +24,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 )
 
 // Event names carried to the frontend.
@@ -92,6 +95,90 @@ func (a *App) Startup(ctx context.Context) {
 	if a.emit == nil {
 		a.emit = func(name string, data ...any) { runtime.EventsEmit(ctx, name, data...) }
 	}
+	a.applySettings(config.LoadSettings())
+}
+
+// applySettings pushes persisted defaults into the running objects.
+func (a *App) applySettings(s config.Settings) {
+	if s.DefaultProvider != "" {
+		a.reg.SetDefault(s.DefaultProvider)
+	}
+	if s.DefaultApproval != "" {
+		if m, err := perm.NormalizeMode(s.DefaultApproval); err == nil {
+			_ = a.perm.SetMode(m)
+		}
+	}
+}
+
+// Settings returns the persisted settings block.
+func (a *App) Settings() config.Settings { return config.LoadSettings() }
+
+// SaveSettings persists the block and applies it immediately.
+func (a *App) SaveSettings(s config.Settings) (config.Settings, error) {
+	if err := config.SaveSettings(s); err != nil {
+		return config.LoadSettings(), err
+	}
+	cur := config.LoadSettings()
+	a.applySettings(cur)
+	return cur, nil
+}
+
+// WorkspaceRoot returns the effective workspace directory.
+func (a *App) WorkspaceRoot() string { return a.workspaceRoot() }
+
+// RenameSession sets a conversation title.
+func (a *App) RenameSession(id, title string) error {
+	if a.store == nil {
+		return ErrNoStore
+	}
+	return a.store.RenameSession(id, title)
+}
+
+// DeleteSession removes a conversation.
+func (a *App) DeleteSession(id string) error {
+	if a.store == nil {
+		return ErrNoStore
+	}
+	return a.store.DeleteSession(id)
+}
+
+// SearchSessions filters conversations by title.
+func (a *App) SearchSessions(query string) ([]store.Session, error) {
+	if a.store == nil {
+		return nil, ErrNoStore
+	}
+	if strings.TrimSpace(query) == "" {
+		return a.store.ListSessions()
+	}
+	return a.store.SearchSessions(query)
+}
+
+// ExportSession returns one conversation as JSON text.
+func (a *App) ExportSession(id string) (string, error) {
+	if a.store == nil {
+		return "", ErrNoStore
+	}
+	raw, err := a.store.ExportSession(id)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// Retry drops the newest user turn and everything after it, then resends the
+// same text.
+func (a *App) Retry(sessionID, providerName, model, effort string) (string, error) {
+	if a.store == nil {
+		return "", ErrNoStore
+	}
+	id, text, err := a.store.LastUserMessage(sessionID)
+	if err != nil {
+		return "", err
+	}
+	if err := a.store.TruncateAfter(sessionID, id-1); err != nil {
+		return "", err
+	}
+	return a.Send(sessionID, providerName, model, effort, text)
 }
 
 // Shutdown is called by Wails.
@@ -207,7 +294,11 @@ func (a *App) Send(sessionID, providerName, model, effort, text string) (string,
 		return "", err
 	}
 
-	tools, err := tool.NewDefaultRegistry(a.perm.Approver(sessionID))
+	ws, err := workspace.Open(a.workspaceRoot())
+	if err != nil {
+		return "", err
+	}
+	tools, err := tool.NewDefaultRegistry(a.perm.Approver(sessionID), ws)
 	if err != nil {
 		return "", err
 	}
@@ -226,13 +317,16 @@ func (a *App) Send(sessionID, providerName, model, effort, text string) (string,
 		cancel()
 	}()
 
+	text = agent.ExpandAttachments(ws, text)
+
 	loop := agent.New(agent.Options{
-		Provider: p,
-		Tools:    tools,
-		Store:    a.store,
-		Model:    model,
-		Effort:   effort,
-		OnEvent:  func(ev provider.Event) { a.emitEvent(EventChat, ev) },
+		Provider:     p,
+		Tools:        tools,
+		Store:        a.store,
+		Model:        model,
+		Effort:       effort,
+		Instructions: ws.Instructions(),
+		OnEvent:      func(ev provider.Event) { a.emitEvent(EventChat, ev) },
 	})
 	return loop.Run(ctx, sessionID, text)
 }
@@ -271,6 +365,24 @@ func (a *App) askApproval(ctx context.Context, sessionID, toolName string, args 
 		})
 		return perm.Deny, ctx.Err()
 	}
+}
+
+// settingsPath is where the settings panel writes.
+func (a *App) settingsPath() string { return config.Path() }
+
+// workspaceRoot resolves the effective workspace: settings first, then the
+// process working directory when it is usable, then the home directory.
+func (a *App) workspaceRoot() string {
+	if s := config.LoadSettings(); s.WorkspaceRoot != "" {
+		return s.WorkspaceRoot
+	}
+	if wd, err := os.Getwd(); err == nil && wd != "/" {
+		return wd
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		return home
+	}
+	return "."
 }
 
 func (a *App) pick(name string) (provider.Provider, error) {

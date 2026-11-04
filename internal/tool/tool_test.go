@@ -12,7 +12,7 @@ import (
 )
 
 func TestUnregisteredToolRejected(t *testing.T) {
-	r, err := NewDefaultRegistry(nil)
+	r, err := NewDefaultRegistry(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestApprovalGateDeniesByDefault(t *testing.T) {
 }
 
 func TestBuiltinEchoRuns(t *testing.T) {
-	r, err := NewDefaultRegistry(nil)
+	r, err := NewDefaultRegistry(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestBuiltinEchoRuns(t *testing.T) {
 }
 
 func TestShellRequiresApproval(t *testing.T) {
-	r, err := NewDefaultRegistry(nil)
+	r, err := NewDefaultRegistry(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,7 +63,7 @@ func TestShellRequiresApproval(t *testing.T) {
 		t.Fatalf("run_shell must be denied without an approver, got %v", err)
 	}
 
-	r2, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true })
+	r2, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestShellRequiresApproval(t *testing.T) {
 }
 
 func TestShellOutputIsCapped(t *testing.T) {
-	r, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true })
+	r, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestShellOutputIsCapped(t *testing.T) {
 }
 
 func TestShellRespectsContextDeadline(t *testing.T) {
-	r, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true })
+	r, err := NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return true }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

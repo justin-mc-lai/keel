@@ -6,6 +6,14 @@ export function Cancel(arg1) {
   return window['go']['desktop']['App']['Cancel'](arg1);
 }
 
+export function DeleteSession(arg1) {
+  return window['go']['desktop']['App']['DeleteSession'](arg1);
+}
+
+export function ExportSession(arg1) {
+  return window['go']['desktop']['App']['ExportSession'](arg1);
+}
+
 export function History(arg1) {
   return window['go']['desktop']['App']['History'](arg1);
 }
@@ -22,8 +30,24 @@ export function Providers() {
   return window['go']['desktop']['App']['Providers']();
 }
 
+export function RenameSession(arg1, arg2) {
+  return window['go']['desktop']['App']['RenameSession'](arg1, arg2);
+}
+
 export function ResolveApproval(arg1, arg2) {
   return window['go']['desktop']['App']['ResolveApproval'](arg1, arg2);
+}
+
+export function Retry(arg1, arg2, arg3, arg4) {
+  return window['go']['desktop']['App']['Retry'](arg1, arg2, arg3, arg4);
+}
+
+export function SaveSettings(arg1) {
+  return window['go']['desktop']['App']['SaveSettings'](arg1);
+}
+
+export function SearchSessions(arg1) {
+  return window['go']['desktop']['App']['SearchSessions'](arg1);
 }
 
 export function Send(arg1, arg2, arg3, arg4, arg5) {
@@ -40,4 +64,12 @@ export function SetEmitter(arg1) {
 
 export function SetPermissionMode(arg1) {
   return window['go']['desktop']['App']['SetPermissionMode'](arg1);
+}
+
+export function Settings() {
+  return window['go']['desktop']['App']['Settings']();
+}
+
+export function WorkspaceRoot() {
+  return window['go']['desktop']['App']['WorkspaceRoot']();
 }

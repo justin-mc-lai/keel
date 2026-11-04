@@ -70,6 +70,35 @@ Add or override providers in `~/.agentdesk/config.json` (or the path in `AGENTDE
 
 `${VAR}` in `apiKey` is resolved from the environment, so the config file never has to hold a secret.
 
+## Workspace and tools
+
+Every session is bound to a workspace directory. File tools resolve every path
+through that root; a path that escapes it (via `..`, an absolute path, or a
+symlink) is refused before any I/O happens.
+
+Nine built-in tools:
+
+| Tool | Approval | Notes |
+|---|---|---|
+| `read_file` | no | 256 KB cap |
+| `write_file` | yes | creates parent directories |
+| `edit_file` | yes | refuses unless the needle appears exactly once |
+| `list_dir` | no | directories end with `/` |
+| `grep` | no | regex, skips `.git` and `node_modules`, 1 MB file cap |
+| `fetch_url` | no | http/https only, 100 KB cap, 20s timeout |
+| `run_shell` | yes | runs in the workspace root, 30s, output capped at 8 KB |
+| `get_time` | no | IANA timezone |
+| `echo` | no | round-trip check |
+
+`@relative/path` in a message is expanded to that file's contents before the
+turn starts. A reference that does not resolve inside the workspace is left
+alone, so an email address never breaks a message.
+
+`AGENTS.md` at the workspace root is appended to the system prompt for every
+turn.
+
+Set the root with `agentdesk run -w /path` or in the desktop settings panel.
+
 ## Permissions
 
 Tool calls are gated. Three tiers, switchable in the toolbar and persisted per session:

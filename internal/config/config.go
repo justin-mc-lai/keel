@@ -59,6 +59,8 @@ var Presets = []Preset{
 // File is the optional user config. It can add vendors or override a preset.
 type File struct {
 	DefaultProvider string         `json:"defaultProvider"`
+	DefaultApproval string         `json:"defaultApproval"`
+	WorkspaceRoot   string         `json:"workspaceRoot"`
 	Providers       []FileProvider `json:"providers"`
 }
 

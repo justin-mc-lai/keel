@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 )
 
 // scriptedProvider replays a fixed list of streams in order.
@@ -64,7 +67,7 @@ func TestLoopExecutesToolAndConverges(t *testing.T) {
 	}
 	defer st.Close()
 
-	tools, err := tool.NewDefaultRegistry(nil)
+	tools, err := tool.NewDefaultRegistry(nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +133,7 @@ func TestLoopStopsAtIterationLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.Close()
-	tools, _ := tool.NewDefaultRegistry(nil)
+	tools, _ := tool.NewDefaultRegistry(nil, nil)
 	sid, _ := st.CreateSession("t")
 
 	loop := New(Options{Provider: p, Tools: tools, Store: st, MaxIterations: 3})
@@ -303,4 +306,29 @@ func TestApprovalTimeoutAndCancel(t *testing.T) {
 			t.Fatal("cancel did not unblock the loop")
 		}
 	})
+}
+
+func TestAttachmentExpansion(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "note.txt"), []byte("secret sauce"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ws, err := workspace.Open(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := ExpandAttachments(ws, "please read @note.txt")
+	if !strings.Contains(got, "secret sauce") {
+		t.Fatalf("attachment not inlined: %q", got)
+	}
+	if !strings.Contains(got, `path="note.txt"`) {
+		t.Fatalf("path missing from block: %q", got)
+	}
+
+	// A missing path and an email must pass through untouched.
+	plain := "mail me at a@b.com about @nope.txt"
+	if out := ExpandAttachments(ws, plain); out != plain {
+		t.Fatalf("non-attachment rewritten: %q", out)
+	}
 }
