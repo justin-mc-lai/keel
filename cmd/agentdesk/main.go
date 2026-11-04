@@ -16,6 +16,7 @@ import (
 
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
+	"github.com/justin-mc-lai/agentdesk/internal/mcp"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
@@ -155,6 +156,15 @@ func runPrompt(
 	tools, err := tool.NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return autoApprove }, ws)
 	if err != nil {
 		return "", err
+	}
+	if cfg, err := config.LoadFile(); err == nil && len(cfg.MCPServers) > 0 {
+		clients, errs := mcp.StartAll(cfg.MCPServers)
+		for _, e := range errs {
+			fmt.Fprintf(out, "[mcp] %v\n", e)
+		}
+		for _, e := range mcp.RegisterTools(tools, clients) {
+			fmt.Fprintf(out, "[mcp] %v\n", e)
+		}
 	}
 
 	loop := agent.New(agent.Options{

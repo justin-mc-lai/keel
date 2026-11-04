@@ -111,6 +111,22 @@ UI can show what is about to change.
 Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
 `agentdesk stats` prints totals per provider and per session.
 
+## MCP servers
+
+stdio servers are configured in `~/.agentdesk/config.json`:
+
+```json
+{
+  "mcpServers": {
+    "files": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] }
+  }
+}
+```
+
+At startup each server is spawned, `initialize` is sent, and `tools/list` is
+registered as `mcp_<server>_<tool>`. A server that fails to start is logged and
+skipped; the remaining servers and built-in tools stay available.
+
 ## Permissions
 
 Tool calls are gated. Three tiers, switchable in the toolbar and persisted per session:

@@ -18,6 +18,10 @@ export function History(arg1) {
   return window['go']['desktop']['App']['History'](arg1);
 }
 
+export function MCPStatus() {
+  return window['go']['desktop']['App']['MCPStatus']();
+}
+
 export function NewSession() {
   return window['go']['desktop']['App']['NewSession']();
 }

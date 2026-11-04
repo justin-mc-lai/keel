@@ -14,6 +14,8 @@ export function ExportSession(arg1:string):Promise<string>;
 
 export function History(arg1:string):Promise<Array<provider.Message>>;
 
+export function MCPStatus():Promise<Record<string, any>>;
+
 export function NewSession():Promise<string>;
 
 export function PermissionState():Promise<desktop.PermissionState>;

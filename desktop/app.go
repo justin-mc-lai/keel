@@ -21,6 +21,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
 	"github.com/justin-mc-lai/agentdesk/internal/diff"
+	"github.com/justin-mc-lai/agentdesk/internal/mcp"
 	"github.com/justin-mc-lai/agentdesk/internal/perm"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
@@ -63,6 +64,9 @@ type App struct {
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
 	pending map[string]chan perm.Decision
+
+	mcpClients []*mcp.Client
+	mcpErrs    []error
 }
 
 // New builds the app and loads persisted state.
@@ -100,6 +104,35 @@ func (a *App) Startup(ctx context.Context) {
 		a.emit = func(name string, data ...any) { runtime.EventsEmit(ctx, name, data...) }
 	}
 	a.applySettings(config.LoadSettings())
+	a.loadMCP()
+}
+
+// loadMCP starts configured stdio servers once. Registration into each turn's
+// registry is cheap; restarting processes per message would not be.
+func (a *App) loadMCP() {
+	cfg, err := config.LoadFile()
+	if err != nil || len(cfg.MCPServers) == 0 {
+		return
+	}
+	clients, errs := mcp.StartAll(cfg.MCPServers)
+	a.mcpClients = clients
+	a.mcpErrs = errs
+	for _, err := range errs {
+		log.Printf("agentdesk: mcp: %v", err)
+	}
+}
+
+// MCPStatus reports how many servers started and which failed.
+func (a *App) MCPStatus() map[string]any {
+	failed := make([]string, 0, len(a.mcpErrs))
+	for _, err := range a.mcpErrs {
+		failed = append(failed, err.Error())
+	}
+	names := make([]string, 0, len(a.mcpClients))
+	for _, c := range a.mcpClients {
+		names = append(names, c.Name())
+	}
+	return map[string]any{"servers": names, "errors": failed}
 }
 
 // applySettings pushes persisted defaults into the running objects.
@@ -204,6 +237,9 @@ func (a *App) Retry(sessionID, providerName, model, effort string) (string, erro
 
 // Shutdown is called by Wails.
 func (a *App) Shutdown(ctx context.Context) {
+	for _, c := range a.mcpClients {
+		_ = c.Close()
+	}
 	if a.store != nil {
 		_ = a.store.Close()
 	}
@@ -323,6 +359,10 @@ func (a *App) Send(sessionID, providerName, model, effort, text string) (string,
 	if err != nil {
 		return "", err
 	}
+	for _, err := range mcp.RegisterTools(tools, a.mcpClients) {
+		log.Printf("agentdesk: mcp register: %v", err)
+	}
+
 	tools.SetPreview(func(p tool.Preview) error {
 		a.emitEvent(EventDiff, map[string]any{
 			"path": p.Path,

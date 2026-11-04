@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/justin-mc-lai/agentdesk/internal/mcp"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 )
 
@@ -58,10 +59,11 @@ var Presets = []Preset{
 
 // File is the optional user config. It can add vendors or override a preset.
 type File struct {
-	DefaultProvider string         `json:"defaultProvider"`
-	DefaultApproval string         `json:"defaultApproval"`
-	WorkspaceRoot   string         `json:"workspaceRoot"`
-	Providers       []FileProvider `json:"providers"`
+	DefaultProvider string                      `json:"defaultProvider"`
+	DefaultApproval string                      `json:"defaultApproval"`
+	WorkspaceRoot   string                      `json:"workspaceRoot"`
+	Providers       []FileProvider              `json:"providers"`
+	MCPServers      map[string]mcp.ServerConfig `json:"mcpServers,omitempty"`
 }
 
 // FileProvider is one provider entry in the user config.
@@ -87,6 +89,27 @@ func Path() string {
 		return ""
 	}
 	return filepath.Join(home, ".agentdesk", "config.json")
+}
+
+// LoadFile reads the raw user config file, returning an empty value when it
+// does not exist.
+func LoadFile() (File, error) {
+	path := Path()
+	if path == "" {
+		return File{}, nil
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return File{}, nil
+		}
+		return File{}, err
+	}
+	var f File
+	if err := json.Unmarshal(raw, &f); err != nil {
+		return File{}, fmt.Errorf("config %s: %w", path, err)
+	}
+	return f, nil
 }
 
 // Load builds the registry from presets, then the user config file, then the
