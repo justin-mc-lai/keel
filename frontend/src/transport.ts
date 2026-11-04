@@ -6,7 +6,8 @@
 type Handler = (payload: any) => void
 
 const wailsApp = (globalThis as any).window?.go?.desktop?.App
-const isDesktop = typeof wailsApp?.Providers === 'function'
+export const isDesktopShell = typeof wailsApp?.Providers === 'function'
+const isDesktop = isDesktopShell
 
 const handlers: Record<string, Handler[]> = {}
 
@@ -70,6 +71,9 @@ export const RenameSession = (id: string, title: string) =>
 
 export const DeleteSession = (id: string) =>
   isDesktop ? wailsApp.DeleteSession(id) : sendJSON('DELETE', `/api/sessions/${id}`)
+
+export const ExportSessionToFile = (id: string) =>
+  isDesktop ? wailsApp.ExportSessionToFile(id) : Promise.resolve('')
 
 export const ExportSession = (id: string) =>
   isDesktop

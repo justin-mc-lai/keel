@@ -18,6 +18,10 @@ export function ExportSession(arg1) {
   return window['go']['desktop']['App']['ExportSession'](arg1);
 }
 
+export function ExportSessionToFile(arg1) {
+  return window['go']['desktop']['App']['ExportSessionToFile'](arg1);
+}
+
 export function History(arg1) {
   return window['go']['desktop']['App']['History'](arg1);
 }

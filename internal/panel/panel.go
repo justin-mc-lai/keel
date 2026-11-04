@@ -29,8 +29,10 @@ type Snapshot struct {
 // ticket that is merely queued is not the human's problem.
 func Build(tickets []ticket.Ticket, running, queued int, historyFor string) Snapshot {
 	out := Snapshot{
-		Health: Health{ByState: map[ticket.State]int{}, Running: running, Queued: queued},
-		At:     time.Now().Unix(),
+		NeedsMe: []ticket.Ticket{},
+		Health:  Health{ByState: map[ticket.State]int{}, Running: running, Queued: queued},
+		History: []ticket.Record{},
+		At:      time.Now().Unix(),
 	}
 	for _, t := range tickets {
 		out.Health.ByState[t.State]++

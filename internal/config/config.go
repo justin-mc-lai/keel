@@ -84,6 +84,9 @@ func Path() string {
 	if v := os.Getenv("KEEL_CONFIG"); v != "" {
 		return v
 	}
+	if v := os.Getenv("KEEL_STATE_DIR"); v != "" {
+		return filepath.Join(v, "config.json")
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""

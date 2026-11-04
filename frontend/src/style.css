@@ -322,3 +322,6 @@ body {
 .history ol { margin: 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
 .history li { margin-bottom: 4px; }
 .history code { color: var(--accent); }
+
+.panel.small { width: 380px; }
+.panel-actions button.danger { background: #7a2b2b; color: #ffdede; border: 1px solid #a33; }

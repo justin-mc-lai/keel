@@ -7,6 +7,7 @@ package desktop
 
 import (
 	"context"
+	"os"
 	"sync"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
@@ -161,6 +162,30 @@ func (a *App) PanelSnapshot(historyFor string) (panel.Snapshot, error) {
 // ApplyTicketAction advances one ticket.
 func (a *App) ApplyTicketAction(id, action string) (ticket.Ticket, error) {
 	return a.svc.ApplyTicketAction(id, action)
+}
+
+// ExportSessionToFile asks for a path and writes the conversation there.
+// Browsers download; a webview cannot, so the desktop gets a real save dialog.
+func (a *App) ExportSessionToFile(id string) (string, error) {
+	raw, err := a.svc.ExportSession(id)
+	if err != nil {
+		return "", err
+	}
+	path, err := runtime.SaveFileDialog(a.base(), runtime.SaveDialogOptions{
+		Title:           "导出会话",
+		DefaultFilename: "keel-" + id + ".json",
+		Filters:         []runtime.FileFilter{{DisplayName: "JSON", Pattern: "*.json"}},
+	})
+	if err != nil {
+		return "", err
+	}
+	if path == "" {
+		return "", nil // user cancelled
+	}
+	if err := os.WriteFile(path, []byte(raw), 0o600); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 // Send runs one turn and streams through the Wails event channel.

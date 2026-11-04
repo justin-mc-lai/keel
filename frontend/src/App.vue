@@ -6,7 +6,8 @@ import {
   PermissionState, SetPermissionMode, ResolveApproval,
   Settings as GetSettings, SaveSettings, WorkspaceRoot,
   RenameSession, DeleteSession, SearchSessions, ExportSession, Retry,
-  Tickets as GetTickets, PanelSnapshot, ApplyTicketAction
+  Tickets as GetTickets, PanelSnapshot, ApplyTicketAction,
+  ExportSessionToFile, isDesktopShell
 } from './transport'
 
 type ProviderInfo = { name: string; defaultModel: string; models: string[]; available: boolean }
@@ -44,6 +45,10 @@ const tickets = ref<any[]>([])
 const panel = ref<any>(null)
 const selected = ref<string>('')
 const boardError = ref('')
+type Dialog =
+  | { kind: 'rename'; id: string; value: string }
+  | { kind: 'confirm'; message: string; action: () => void }
+const dialog = ref<Dialog | null>(null)
 
 const EFFORTS = [
   { value: '', label: '思考：默认' },
@@ -174,24 +179,49 @@ async function doSearch() {
   sessions.value = (await SearchSessions(query.value)) ?? []
 }
 
-async function renameSession(id: string, current: string) {
-  const title = window.prompt('会话标题', current || 'Untitled')
-  if (title === null) return
-  await RenameSession(id, title)
+function renameSession(id: string, current: string) {
+  dialog.value = { kind: 'rename', id, value: current || 'Untitled' }
+}
+
+function runConfirm() {
+  const d = dialog.value
+  if (!d || d.kind !== 'confirm') return
+  const action = d.action
+  dialog.value = null
+  action()
+}
+
+async function confirmRename() {
+  const d = dialog.value
+  if (!d || d.kind !== 'rename') return
+  const title = d.value.trim() || 'Untitled'
+  dialog.value = null
+  await RenameSession(d.id, title)
   await loadSessions()
 }
 
-async function removeSession(id: string) {
-  if (!window.confirm('删除这个会话？')) return
-  await DeleteSession(id)
-  if (sessionId.value === id) {
-    sessionId.value = ''
-    messages.value = []
+function removeSession(id: string) {
+  dialog.value = {
+    kind: 'confirm',
+    message: '删除这个会话？删除后无法恢复。',
+    action: async () => {
+      await DeleteSession(id)
+      if (sessionId.value === id) {
+        sessionId.value = ''
+        messages.value = []
+      }
+      await loadSessions()
+    }
   }
-  await loadSessions()
 }
 
 async function exportSession(id: string) {
+  if (isDesktopShell) {
+    // A webview cannot download a blob; the desktop opens a real save dialog.
+    const path = await ExportSessionToFile(id)
+    if (path) status.value = `已导出到 ${path}`
+    return
+  }
   const raw = await ExportSession(id)
   const blob = new Blob([raw], { type: 'application/json' })
   const a = document.createElement('a')
@@ -438,6 +468,27 @@ function onKeydown(e: KeyboardEvent) {
         <button v-else class="stop" @click="stop">Stop</button>
       </footer>
     </main>
+
+    <div v-if="dialog" class="overlay" @click.self="dialog = null">
+      <div class="panel small">
+        <template v-if="dialog.kind === 'rename'">
+          <h2>重命名会话</h2>
+          <input v-model="dialog.value" @keydown.enter="confirmRename" />
+          <div class="panel-actions">
+            <button @click="dialog = null">取消</button>
+            <button class="primary" @click="confirmRename">保存</button>
+          </div>
+        </template>
+        <template v-else>
+          <h2>确认操作</h2>
+          <p class="hint">{{ dialog.message }}</p>
+          <div class="panel-actions">
+            <button @click="dialog = null">取消</button>
+            <button class="danger" @click="runConfirm">确定</button>
+          </div>
+        </template>
+      </div>
+    </div>
 
     <div v-if="showSettings" class="overlay" @click.self="showSettings = false">
       <div class="panel">

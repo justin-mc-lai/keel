@@ -17,6 +17,8 @@ export function DeleteSession(arg1:string):Promise<void>;
 
 export function ExportSession(arg1:string):Promise<string>;
 
+export function ExportSessionToFile(arg1:string):Promise<string>;
+
 export function History(arg1:string):Promise<Array<provider.Message>>;
 
 export function MCPStatus():Promise<Record<string, any>>;
