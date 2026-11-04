@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -17,8 +18,10 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
 	"github.com/justin-mc-lai/agentdesk/internal/mcp"
+	"github.com/justin-mc-lai/agentdesk/internal/panel"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
+	"github.com/justin-mc-lai/agentdesk/internal/ticket"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
 	usageledger "github.com/justin-mc-lai/agentdesk/internal/usage"
 	"github.com/justin-mc-lai/agentdesk/internal/workspace"
@@ -47,6 +50,10 @@ func Execute(args []string, out, errOut io.Writer) int {
 		return cmdSmoke(out, errOut)
 	case "stats":
 		return cmdStats(out, errOut)
+	case "panel":
+		return cmdPanel(args[1:], out, errOut)
+	case "tickets":
+		return cmdTickets(out, errOut)
 	case "version", "-v", "--version":
 		fmt.Fprintln(out, "agentdesk "+Version)
 		return 0
@@ -73,6 +80,8 @@ usage:
   agentdesk history <session-id>
   agentdesk smoke
   agentdesk stats
+  agentdesk tickets
+  agentdesk panel [-ticket id] [-json]
   agentdesk version
 `)
 }
@@ -397,6 +406,86 @@ func cmdStats(out, errOut io.Writer) int {
 	for _, s := range sessions {
 		t := bySession[s]
 		fmt.Fprintf(out, "  %-18s calls=%-4d tokens=%-8d\n", s, t.Calls, t.Total)
+	}
+	return 0
+}
+
+func cmdTickets(out, errOut io.Writer) int {
+	st, err := ticket.OpenStore("")
+	if err != nil {
+		fmt.Fprintf(errOut, "tickets: %v\n", err)
+		return 1
+	}
+	list, err := st.List()
+	if err != nil {
+		fmt.Fprintf(errOut, "tickets: %v\n", err)
+		return 1
+	}
+	if len(list) == 0 {
+		fmt.Fprintln(out, "no tickets yet")
+		return 0
+	}
+	for _, t := range list {
+		fmt.Fprintf(out, "%-10s %-16s %s\n", t.ID, t.State, t.Title)
+	}
+	return 0
+}
+
+// cmdPanel answers the three supervisor questions.
+func cmdPanel(args []string, out, errOut io.Writer) int {
+	fs := flag.NewFlagSet("panel", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	historyFor := fs.String("ticket", "", "show the history of one ticket")
+	asJSON := fs.Bool("json", false, "emit JSON")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	st, err := ticket.OpenStore("")
+	if err != nil {
+		fmt.Fprintf(errOut, "panel: %v\n", err)
+		return 1
+	}
+	list, err := st.List()
+	if err != nil {
+		fmt.Fprintf(errOut, "panel: %v\n", err)
+		return 1
+	}
+	running, queued := 0, 0
+	for _, t := range list {
+		switch t.State {
+		case ticket.Working:
+			running++
+		case ticket.Queued:
+			queued++
+		}
+	}
+	snap := panel.Build(list, running, queued, *historyFor)
+
+	if *asJSON {
+		enc := json.NewEncoder(out)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(snap)
+		return 0
+	}
+
+	fmt.Fprintf(out, "1) 需要我处理的工单：%d\n", len(snap.NeedsMe))
+	for _, t := range snap.NeedsMe {
+		fmt.Fprintf(out, "   %s  %-16s %s\n", t.ID, t.State, t.Title)
+	}
+	fmt.Fprintf(out, "\n2) 系统健康\n")
+	fmt.Fprintf(out, "   运行中 %d  排队 %d\n", snap.Health.Running, snap.Health.Queued)
+	for state, n := range snap.Health.ByState {
+		fmt.Fprintf(out, "   %-16s %d\n", state, n)
+	}
+	if *historyFor != "" {
+		fmt.Fprintf(out, "\n3) 工单 %s 的历史：%d 条\n", *historyFor, len(snap.History))
+		for _, r := range snap.History {
+			fmt.Fprintf(out, "   %s  %-8s %s -> %s  %s\n",
+				time.Unix(r.At, 0).Format("01-02 15:04"), r.Event, r.From, r.To, r.Note)
+		}
+	} else {
+		fmt.Fprintf(out, "\n3) 用 -ticket <id> 查看单条工单历史\n")
 	}
 	return 0
 }

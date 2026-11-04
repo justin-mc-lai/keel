@@ -111,6 +111,39 @@ UI can show what is about to change.
 Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
 `agentdesk stats` prints totals per provider and per session.
 
+## Triggers, tickets, panel
+
+This is the part that makes it a base rather than a chat client.
+
+A **trigger** is an immutable event with a dedup key. A **schedule** produces
+them on a plan; `@every 30s` and `daily 09:00` are supported. The ledger is
+append-only, so a restart never replays an instant.
+
+A **ticket** is one authorized piece of work with its own state machine:
+
+```
+open -> working -> awaiting_review -> ended
+  |         |            |
+  |         +-> awaiting_person
+  +-> queued -> working
+working -> failed -> queued
+```
+
+Illegal moves are refused and leave the ticket untouched. **Slots** cap how many
+tickets run at once; the rest queue and start automatically when a slot frees.
+
+Finished tickets write one record through a **Channel** (local file by default).
+
+`agentdesk panel` answers three questions: what needs me, is the system healthy,
+and what happened to one ticket.
+
+```bash
+agentdesk tickets
+agentdesk panel
+agentdesk panel -ticket <id>
+agentdesk panel -json
+```
+
 ## MCP servers
 
 stdio servers are configured in `~/.agentdesk/config.json`:
