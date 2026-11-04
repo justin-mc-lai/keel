@@ -19,7 +19,7 @@ export namespace config {
 
 }
 
-export namespace desktop {
+export namespace core {
 	
 	export class PermissionState {
 	    mode: string;
@@ -35,6 +35,18 @@ export namespace desktop {
 	        this.mode = source["mode"];
 	        this.warning = source["warning"];
 	        this.pending = source["pending"];
+	    }
+	}
+	export class Service {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new Service(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
 	    }
 	}
 

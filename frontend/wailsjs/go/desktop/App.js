@@ -58,6 +58,10 @@ export function Send(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['desktop']['App']['Send'](arg1, arg2, arg3, arg4, arg5);
 }
 
+export function Service() {
+  return window['go']['desktop']['App']['Service']();
+}
+
 export function Sessions() {
   return window['go']['desktop']['App']['Sessions']();
 }

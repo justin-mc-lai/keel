@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
 import {
+  EventsOn, EventsOff,
   Providers, Sessions, History, NewSession, Send, Cancel,
   PermissionState, SetPermissionMode, ResolveApproval,
   Settings as GetSettings, SaveSettings, WorkspaceRoot,
   RenameSession, DeleteSession, SearchSessions, ExportSession, Retry
-} from '../wailsjs/go/desktop/App'
+} from './transport'
 
 type ProviderInfo = { name: string; defaultModel: string; models: string[]; available: boolean }
 type Msg = { role: string; content: string; reasoning?: string }
@@ -218,9 +218,9 @@ async function openSession(id: string) {
   sessionId.value = id
   const history = (await History(id)) ?? []
   messages.value = history
-    .filter((m) => m.role === 'user' || m.role === 'assistant')
-    .filter((m) => (m.content ?? '') !== '')
-    .map((m) => ({ role: m.role, content: m.content ?? '', reasoning: m.reasoning ?? '' }))
+    .filter((m: any) => m.role === 'user' || m.role === 'assistant')
+    .filter((m: any) => (m.content ?? '') !== '')
+    .map((m: any) => ({ role: m.role, content: m.content ?? '', reasoning: m.reasoning ?? '' }))
 }
 
 async function send() {

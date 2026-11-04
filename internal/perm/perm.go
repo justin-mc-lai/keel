@@ -122,6 +122,19 @@ func (c *Controller) timeoutFor() time.Duration {
 
 // Approver returns the callback the tool registry consults for one session.
 func (c *Controller) Approver(sessionID string) tool.Approver {
+	c.mu.RLock()
+	ask := c.ask
+	c.mu.RUnlock()
+	return c.approverFor(sessionID, ask)
+}
+
+// ApproverFor binds the callback to a specific asker, so two transports can
+// drive the same controller without sharing a callback.
+func (c *Controller) ApproverFor(sessionID string, ask Asker) tool.Approver {
+	return c.approverFor(sessionID, ask)
+}
+
+func (c *Controller) approverFor(sessionID string, ask Asker) tool.Approver {
 	return func(ctx context.Context, name string, args []byte) bool {
 		mode := c.Mode()
 		if mode == Bypass {
@@ -131,9 +144,6 @@ func (c *Controller) Approver(sessionID string) tool.Approver {
 			return true
 		}
 		// In Allow mode the first use still asks; the answer is remembered.
-		c.mu.RLock()
-		ask := c.ask
-		c.mu.RUnlock()
 		if ask == nil {
 			return false
 		}

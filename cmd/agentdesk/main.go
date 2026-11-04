@@ -6,9 +6,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -17,6 +19,8 @@ import (
 
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
+	"github.com/justin-mc-lai/agentdesk/internal/core"
+	"github.com/justin-mc-lai/agentdesk/internal/httpserver"
 	"github.com/justin-mc-lai/agentdesk/internal/mcp"
 	"github.com/justin-mc-lai/agentdesk/internal/panel"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
@@ -25,6 +29,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
 	usageledger "github.com/justin-mc-lai/agentdesk/internal/usage"
 	"github.com/justin-mc-lai/agentdesk/internal/workspace"
+	fsimpl "io/fs"
 )
 
 func main() {
@@ -52,6 +57,8 @@ func Execute(args []string, out, errOut io.Writer) int {
 		return cmdStats(out, errOut)
 	case "panel":
 		return cmdPanel(args[1:], out, errOut)
+	case "serve":
+		return cmdServe(args[1:], out, errOut)
 	case "tickets":
 		return cmdTickets(out, errOut)
 	case "version", "-v", "--version":
@@ -82,6 +89,7 @@ usage:
   agentdesk stats
   agentdesk tickets
   agentdesk panel [-ticket id] [-json]
+  agentdesk serve [-addr 127.0.0.1:8787] [-assets frontend/dist]
   agentdesk version
 `)
 }
@@ -486,6 +494,37 @@ func cmdPanel(args []string, out, errOut io.Writer) int {
 		}
 	} else {
 		fmt.Fprintf(out, "\n3) 用 -ticket <id> 查看单条工单历史\n")
+	}
+	return 0
+}
+
+// cmdServe runs the browser shell over the same core service.
+func cmdServe(args []string, out, errOut io.Writer) int {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	addr := fs.String("addr", "127.0.0.1:8787", "listen address")
+	assetsDir := fs.String("assets", "frontend/dist", "built frontend directory")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	var assets fsimpl.FS
+	if st, err := os.Stat(*assetsDir); err == nil && st.IsDir() {
+		assets = os.DirFS(*assetsDir)
+	} else {
+		fmt.Fprintf(errOut, "serve: %s not found; run `cd frontend && npm run build`\n", *assetsDir)
+	}
+
+	svc := core.New()
+	svc.Bootstrap()
+	defer svc.Close()
+
+	srv := httpserver.New(svc, assets)
+	fmt.Fprintf(out, "agentdesk listening on http://%s\n", *addr)
+	httpSrv := &http.Server{Addr: *addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		fmt.Fprintf(errOut, "serve: %v\n", err)
+		return 1
 	}
 	return 0
 }

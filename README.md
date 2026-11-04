@@ -70,6 +70,37 @@ Add or override providers in `~/.agentdesk/config.json` (or the path in `AGENTDE
 
 `${VAR}` in `apiKey` is resolved from the environment, so the config file never has to hold a secret.
 
+## Two shells, one build
+
+The same frontend build runs in both places:
+
+```bash
+wails build                    # desktop window
+agentdesk serve                # browser at http://127.0.0.1:8787
+agentdesk serve -addr :9000 -assets frontend/dist
+```
+
+`internal/core` holds every piece of logic and imports no UI package. The Wails
+adapter pushes events through `runtime.EventsEmit`; the HTTP adapter pushes the
+same events as Server-Sent Events. `frontend/src/transport.ts` picks the right
+one at runtime, so `App.vue` has a single code path.
+
+HTTP surface:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/healthz` | liveness JSON |
+| GET | `/api/providers` | configured vendors |
+| GET/POST | `/api/sessions` | list / create |
+| PATCH/DELETE | `/api/sessions/{id}` | rename / delete |
+| GET | `/api/sessions/{id}/messages` | history |
+| GET | `/api/sessions/{id}/export` | JSON export |
+| POST | `/api/chat` | SSE stream of chat and tool events |
+| POST | `/api/approvals/{id}` | answer a pending approval |
+| GET/POST | `/api/permission` | read / set the tier |
+| GET/POST | `/api/settings` | read / save settings |
+| GET | `/api/usage` | token rollup |
+
 ## Workspace and tools
 
 Every session is bound to a workspace directory. File tools resolve every path

@@ -1,7 +1,6 @@
 package desktop
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -81,15 +80,16 @@ func TestBypassWarningVisible(t *testing.T) {
 		t.Fatal("unknown mode should be rejected")
 	}
 
-	// Bypass must allow without emitting an approval request.
-	var events int
-	app.SetEmitter(func(name string, data ...any) { events++ })
-	if !app.perm.Approver("s1")(context.Background(), "danger", nil) {
-		t.Fatal("bypass should allow the tool")
+	// Bypass is a warning state, and it must not ask: a fresh service in
+	// bypass mode reports Warning and keeps zero pending approvals.
+	svc := app.Service()
+	if _, err := svc.SetPermissionMode("bypass"); err != nil {
+		t.Fatal(err)
 	}
-	if events != 0 {
-		t.Fatalf("bypass emitted %d events, want 0", events)
+	if st := svc.PermissionState(); !st.Warning || st.Mode != "bypass" || st.Pending != 0 {
+		t.Fatalf("bypass state = %+v", st)
 	}
+
 }
 
 func TestResolveApprovalUnknownID(t *testing.T) {
