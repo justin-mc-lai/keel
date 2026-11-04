@@ -142,6 +142,38 @@ UI can show what is about to change.
 Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
 `agentdesk stats` prints totals per provider and per session.
 
+## Workflows
+
+A workflow is a JSON DAG. Nodes run in dependency order; a failing node stops
+the run.
+
+```json
+{
+  "id": "hello-flow",
+  "nodes": [
+    { "id": "fetch", "type": "http",  "url": "https://example.com",
+      "timeout": "15s", "retry": { "attempts": 2, "backoff": "300ms" } },
+    { "id": "think", "type": "agent", "depends": ["fetch"],
+      "prompt": "In one sentence, say what this page is: {{fetch}}" },
+    { "id": "wait",  "type": "delay", "depends": ["think"], "duration": "10ms" }
+  ]
+}
+```
+
+```bash
+agentdesk workflow run flow.json -provider opencode-go
+agentdesk runs
+```
+
+Node types: `http`, `agent`, `delay`. `{{node-id}}` substitutes a previous
+node's output. Every run is appended to `~/.agentdesk/runs.json` with per-node
+status, attempts, timing and error text.
+
+Validation happens before anything executes: duplicate ids, unknown
+dependencies and cycles are all refused.
+
+Out of scope for this lake: parallel branches, conditional branches, replay.
+
 ## Board
 
 The sidebar switches between **对话** and **工单**. The board groups tickets by

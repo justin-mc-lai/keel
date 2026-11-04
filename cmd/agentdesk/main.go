@@ -28,6 +28,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/ticket"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
 	usageledger "github.com/justin-mc-lai/agentdesk/internal/usage"
+	"github.com/justin-mc-lai/agentdesk/internal/workflow"
 	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 	fsimpl "io/fs"
 )
@@ -59,6 +60,10 @@ func Execute(args []string, out, errOut io.Writer) int {
 		return cmdPanel(args[1:], out, errOut)
 	case "serve":
 		return cmdServe(args[1:], out, errOut)
+	case "workflow":
+		return cmdWorkflow(args[1:], out, errOut)
+	case "runs":
+		return cmdRuns(out, errOut)
 	case "tickets":
 		return cmdTickets(out, errOut)
 	case "version", "-v", "--version":
@@ -90,6 +95,8 @@ usage:
   agentdesk tickets
   agentdesk panel [-ticket id] [-json]
   agentdesk serve [-addr 127.0.0.1:8787] [-assets frontend/dist]
+  agentdesk workflow run <file.json> [-provider name] [-model id]
+  agentdesk runs
   agentdesk version
 `)
 }
@@ -525,6 +532,113 @@ func cmdServe(args []string, out, errOut io.Writer) int {
 	if err := httpSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(errOut, "serve: %v\n", err)
 		return 1
+	}
+	return 0
+}
+
+// cmdWorkflow runs a configuration-defined DAG.
+func cmdWorkflow(args []string, out, errOut io.Writer) int {
+	if len(args) == 0 || args[0] != "run" {
+		fmt.Fprintln(errOut, "usage: agentdesk workflow run <file.json>")
+		return 2
+	}
+	fs := flag.NewFlagSet("workflow run", flag.ContinueOnError)
+	fs.SetOutput(errOut)
+	providerName := fs.String("provider", "", "provider name")
+	model := fs.String("model", "", "model id")
+	rest := args[1:]
+	if err := fs.Parse(rest); err != nil {
+		return 2
+	}
+	if fs.NArg() == 0 {
+		fmt.Fprintln(errOut, "workflow run: file required")
+		return 2
+	}
+	file := fs.Arg(0)
+
+	def, err := workflow.Load(file)
+	if err != nil {
+		fmt.Fprintf(errOut, "workflow: %v\n", err)
+		return 1
+	}
+
+	reg, err := config.Load()
+	if err != nil {
+		fmt.Fprintf(errOut, "workflow: %v\n", err)
+		return 1
+	}
+	p, err := pick(reg, *providerName)
+	if err != nil {
+		fmt.Fprintf(errOut, "workflow: %v\n", err)
+		return 1
+	}
+
+	agentFn := func(ctx context.Context, prompt string) (string, error) {
+		stream, err := p.Stream(ctx, provider.Request{
+			Model:     *model,
+			SessionID: "workflow-" + def.ID,
+			Messages:  []provider.Message{{Role: provider.RoleSystem, Content: "Return only the requested result."}, {Role: provider.RoleUser, Content: prompt}},
+			MaxTokens: 1024,
+		})
+		if err != nil {
+			return "", err
+		}
+		var b strings.Builder
+		for ev := range stream {
+			switch ev.Type {
+			case provider.EventContent:
+				b.WriteString(ev.Text)
+			case provider.EventError:
+				if ev.Err != nil {
+					return "", ev.Err
+				}
+			}
+		}
+		return strings.TrimSpace(b.String()), nil
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	run := workflow.Execute(ctx, def, workflow.Deps{Agent: agentFn})
+	for _, n := range run.Nodes {
+		status := n.Status
+		fmt.Fprintf(out, "%-5s %-12s %-8s attempts=%d\n", status, n.ID, n.Type, n.Attempts)
+		if n.Error != "" {
+			fmt.Fprintf(out, "      error: %s\n", oneLine(n.Error, 160))
+		}
+	}
+	fmt.Fprintf(out, "\nworkflow %s: %s (%d nodes)\n", run.Workflow, run.Status, len(run.Nodes))
+
+	if st, err := workflow.OpenStore(""); err == nil {
+		if err := st.Save(*run); err != nil {
+			fmt.Fprintf(errOut, "workflow: save run: %v\n", err)
+		}
+	}
+	if run.Status != "passed" {
+		return 1
+	}
+	return 0
+}
+
+func cmdRuns(out, errOut io.Writer) int {
+	st, err := workflow.OpenStore("")
+	if err != nil {
+		fmt.Fprintf(errOut, "runs: %v\n", err)
+		return 1
+	}
+	list, err := st.List()
+	if err != nil {
+		fmt.Fprintf(errOut, "runs: %v\n", err)
+		return 1
+	}
+	if len(list) == 0 {
+		fmt.Fprintln(out, "no runs yet")
+		return 0
+	}
+	for _, r := range list {
+		fmt.Fprintf(out, "%-9s %-16s %d nodes  %s\n", r.Status, r.Workflow, len(r.Nodes),
+			time.Unix(r.Ended, 0).Format("01-02 15:04"))
 	}
 	return 0
 }
