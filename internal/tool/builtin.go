@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -23,12 +22,11 @@ const (
 	maxFetchBytes = 100 * 1024
 	maxListItems  = 500
 	maxGrepHits   = 100
-	shellLimit    = 30 * time.Second
 )
 
 // Builtins returns the default tool set. File tools refuse any path outside
 // the workspace; write-side tools ask for approval.
-func Builtins(ws *workspace.Workspace) []Tool {
+func (r *Registry) builtins(ws *workspace.Workspace) []Tool {
 	resolve := func(p string) (string, error) {
 		if ws == nil {
 			return "", fmt.Errorf("workspace not configured")
@@ -79,6 +77,10 @@ func Builtins(ws *workspace.Workspace) []Tool {
 				if err != nil {
 					return "", err
 				}
+				before, _ := os.ReadFile(p)
+				if err := r.previewChange(Preview{Path: in.Path, Before: string(before), After: in.Content}); err != nil {
+					return "", err
+				}
 				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 					return "", err
 				}
@@ -114,6 +116,9 @@ func Builtins(ws *workspace.Workspace) []Tool {
 					return "", fmt.Errorf("edit_file: %q must appear exactly once in %s", in.Old, in.Path)
 				}
 				next := strings.Replace(string(raw), in.Old, in.New, 1)
+				if err := r.previewChange(Preview{Path: in.Path, Before: string(raw), After: next}); err != nil {
+					return "", err
+				}
 				if err := os.WriteFile(p, []byte(next), 0o644); err != nil {
 					return "", err
 				}
@@ -240,7 +245,7 @@ func Builtins(ws *workspace.Workspace) []Tool {
 		},
 		{
 			Name:             "run_shell",
-			Description:      "Run a shell command in the workspace root and return combined output. Requires approval.",
+			Description:      "Run a shell command. Commands slower than 5s become background jobs; use job_output to read them. Requires approval.",
 			Parameters:       json.RawMessage(`{"type":"object","properties":{"command":{"type":"string"}},"required":["command"]}`),
 			RequiresApproval: true,
 			Run: func(ctx context.Context, args json.RawMessage) (string, error) {
@@ -253,26 +258,65 @@ func Builtins(ws *workspace.Workspace) []Tool {
 				if strings.TrimSpace(in.Command) == "" {
 					return "", fmt.Errorf("empty command")
 				}
-				cctx, cancel := context.WithTimeout(ctx, shellLimit)
-				defer cancel()
-				cmd := exec.CommandContext(cctx, "sh", "-c", in.Command)
+				dir := ""
 				if ws != nil {
-					cmd.Dir = ws.Root()
+					dir = ws.Root()
 				}
-				cmd.WaitDelay = 2 * time.Second
-				setupProc(cmd)
-				out := &cappedBuffer{max: 8192}
-				cmd.Stdout = out
-				cmd.Stderr = out
-				err := cmd.Run()
-				text := out.String()
-				if out.truncated {
-					text += "\n[output truncated]"
+				id, err := r.jobs.Start(in.Command, dir)
+				if err != nil {
+					return "", err
+				}
+				out, done, werr := r.jobs.Wait(ctx, id, r.jobWait)
+				if werr != nil {
+					_ = r.jobs.Kill(id)
+					return out, werr
+				}
+				if done {
+					if len(out) >= 8192 {
+						out += "\n[output truncated]"
+					}
+					return out, nil
+				}
+				return fmt.Sprintf("started background job %s\nuse job_output with id %q to read it", id, id), nil
+			},
+		},
+		{
+			Name:        "job_output",
+			Description: "Read the output of a background job. Returns current output and whether it finished.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`),
+			Run: func(ctx context.Context, args json.RawMessage) (string, error) {
+				var in struct {
+					ID string `json:"id"`
+				}
+				if err := json.Unmarshal(args, &in); err != nil {
+					return "", err
+				}
+				out, done, err := r.jobs.Poll(in.ID)
+				state := "running"
+				if done {
+					state = "finished"
 				}
 				if err != nil {
-					return text, fmt.Errorf("%v: %s", err, strings.TrimSpace(text))
+					return fmt.Sprintf("[%s]\n%s", state, out), err
 				}
-				return text, nil
+				return fmt.Sprintf("[%s]\n%s", state, out), nil
+			},
+		},
+		{
+			Name:        "job_kill",
+			Description: "Terminate a background job.",
+			Parameters:  json.RawMessage(`{"type":"object","properties":{"id":{"type":"string"}},"required":["id"]}`),
+			Run: func(ctx context.Context, args json.RawMessage) (string, error) {
+				var in struct {
+					ID string `json:"id"`
+				}
+				if err := json.Unmarshal(args, &in); err != nil {
+					return "", err
+				}
+				if err := r.jobs.Kill(in.ID); err != nil {
+					return "", err
+				}
+				return "killed " + in.ID, nil
 			},
 		},
 		{
@@ -317,35 +361,10 @@ const Version = "0.2.0"
 // NewDefaultRegistry registers the built-ins and applies the approval policy.
 func NewDefaultRegistry(approve Approver, ws *workspace.Workspace) (*Registry, error) {
 	r := NewRegistry(approve)
-	for _, t := range Builtins(ws) {
+	for _, t := range r.builtins(ws) {
 		if err := r.Register(t); err != nil {
 			return nil, err
 		}
 	}
 	return r, nil
 }
-
-// cappedBuffer stops a runaway command from flooding memory or the transcript.
-type cappedBuffer struct {
-	buf       bytes.Buffer
-	max       int
-	truncated bool
-}
-
-func (c *cappedBuffer) Write(p []byte) (int, error) {
-	if c.buf.Len() < c.max {
-		room := c.max - c.buf.Len()
-		if len(p) > room {
-			c.buf.Write(p[:room])
-			c.truncated = true
-		} else {
-			c.buf.Write(p)
-		}
-	} else if len(p) > 0 {
-		c.truncated = true
-	}
-	// Report full consumption so the child is never blocked by a short write.
-	return len(p), nil
-}
-
-func (c *cappedBuffer) String() string { return c.buf.String() }

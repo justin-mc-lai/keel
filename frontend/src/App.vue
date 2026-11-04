@@ -37,6 +37,7 @@ const query = ref('')
 const showSettings = ref(false)
 const workspace = ref('')
 const form = ref({ defaultProvider: '', defaultApproval: 'ask', workspaceRoot: '' })
+const diffs = ref<{ path: string; diff: string }[]>([])
 
 const EFFORTS = [
   { value: '', label: '思考：默认' },
@@ -74,6 +75,12 @@ function onStream(ev: StreamEvent) {
       busy.value = false
       break
   }
+}
+
+function onDiff(payload: any) {
+  if (!payload?.diff) return
+  diffs.value.unshift({ path: payload.path ?? '', diff: payload.diff })
+  if (diffs.value.length > 5) diffs.value.pop()
 }
 
 function onApproval(payload: any) {
@@ -179,6 +186,7 @@ async function retry() {
 onMounted(async () => {
   EventsOn('chat:event', onStream)
   EventsOn('tool:approval', onApproval)
+  EventsOn('tool:diff', onDiff)
   await refreshPermission()
   providers.value = (await Providers()) ?? []
   const ready = providers.value.find((p) => p.available) ?? providers.value[0]
@@ -193,6 +201,7 @@ onMounted(async () => {
 onUnmounted(() => {
   EventsOff('chat:event')
   EventsOff('tool:approval')
+  EventsOff('tool:diff')
 })
 
 async function loadSessions() {
@@ -318,6 +327,11 @@ function onKeydown(e: KeyboardEvent) {
           <div class="bubble">{{ m.content }}</div>
         </div>
       </div>
+
+      <details v-if="diffs.length" class="diffbox">
+        <summary>变更预览（{{ diffs.length }}）</summary>
+        <pre v-for="(d, i) in diffs" :key="i" class="difftext">{{ d.diff }}</pre>
+      </details>
 
       <div v-if="approval" class="approval">
         <div class="approval-head">

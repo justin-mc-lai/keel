@@ -20,10 +20,12 @@ import (
 
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
+	"github.com/justin-mc-lai/agentdesk/internal/diff"
 	"github.com/justin-mc-lai/agentdesk/internal/perm"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	"github.com/justin-mc-lai/agentdesk/internal/usage"
 	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 )
 
@@ -33,6 +35,8 @@ const (
 	EventChat = "chat:event"
 	// EventApproval carries an approval request and its resolution.
 	EventApproval = "tool:approval"
+	// EventDiff carries a pending file change before it is written.
+	EventDiff = "tool:diff"
 )
 
 // Emitter forwards an event to the frontend. Tests replace it.
@@ -121,6 +125,23 @@ func (a *App) SaveSettings(s config.Settings) (config.Settings, error) {
 	cur := config.LoadSettings()
 	a.applySettings(cur)
 	return cur, nil
+}
+
+// UsageRollup returns token totals grouped by provider and by session.
+func (a *App) UsageRollup() (map[string]usage.Totals, map[string]usage.Totals, error) {
+	l, err := usage.Open("")
+	if err != nil {
+		return nil, nil, err
+	}
+	byProvider, _, err := l.ByProvider()
+	if err != nil {
+		return nil, nil, err
+	}
+	bySession, _, err := l.BySession()
+	if err != nil {
+		return nil, nil, err
+	}
+	return byProvider, bySession, nil
 }
 
 // WorkspaceRoot returns the effective workspace directory.
@@ -302,6 +323,13 @@ func (a *App) Send(sessionID, providerName, model, effort, text string) (string,
 	if err != nil {
 		return "", err
 	}
+	tools.SetPreview(func(p tool.Preview) error {
+		a.emitEvent(EventDiff, map[string]any{
+			"path": p.Path,
+			"diff": diff.Unified(p.Path, p.Before, p.After),
+		})
+		return nil
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	if a.ctx != nil {
@@ -328,6 +356,11 @@ func (a *App) Send(sessionID, providerName, model, effort, text string) (string,
 		Instructions: ws.Instructions(),
 		OnEvent:      func(ev provider.Event) { a.emitEvent(EventChat, ev) },
 	})
+	// Registered after the loop exists: spawn_subagent reuses the same
+	// provider, model and store, but always in a fresh session.
+	if err := tools.SetSubagent(loop.Subagent()); err != nil {
+		return "", err
+	}
 	return loop.Run(ctx, sessionID, text)
 }
 

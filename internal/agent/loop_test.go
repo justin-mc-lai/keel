@@ -332,3 +332,57 @@ func TestAttachmentExpansion(t *testing.T) {
 		t.Fatalf("non-attachment rewritten: %q", out)
 	}
 }
+
+func TestSubagentIsolatedSession(t *testing.T) {
+	parent := &scriptedProvider{turns: [][]provider.Event{
+		{{Type: provider.EventContent, Text: "parent answer"}},
+	}}
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	pid, _ := st.CreateSession("parent")
+
+	tools, _ := tool.NewDefaultRegistry(nil, nil)
+	loop := New(Options{Provider: parent, Tools: tools, Store: st})
+
+	child := loop.Subagent()
+	if _, err := child(context.Background(), "do the child thing"); err != nil {
+		t.Fatalf("child: %v", err)
+	}
+
+	// The parent session must not gain any message from the child run.
+	parentMsgs, err := st.Messages(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(parentMsgs) != 0 {
+		t.Fatalf("parent session polluted: %+v", parentMsgs)
+	}
+
+	// The child got a session of its own with its own user message.
+	list, err := st.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("sessions = %d, want 2", len(list))
+	}
+	var childID string
+	for _, s := range list {
+		if s.ID != pid {
+			childID = s.ID
+		}
+	}
+	msgs, _ := st.Messages(childID)
+	if len(msgs) != 2 {
+		t.Fatalf("child messages = %d, want user+assistant", len(msgs))
+	}
+	if msgs[0].Content != "do the child thing" || msgs[1].Content != "parent answer" {
+		t.Fatalf("child history = %+v", msgs)
+	}
+	if strings.Contains(msgs[0].Content, "parent") {
+		t.Fatal("child saw parent context")
+	}
+}

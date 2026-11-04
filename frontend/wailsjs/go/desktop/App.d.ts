@@ -4,6 +4,7 @@ import {provider} from '../models';
 import {desktop} from '../models';
 import {config} from '../models';
 import {store} from '../models';
+import {usage} from '../models';
 
 export function Cancel(arg1:string):Promise<void>;
 
@@ -38,5 +39,7 @@ export function SetEmitter(arg1:desktop.Emitter):Promise<void>;
 export function SetPermissionMode(arg1:string):Promise<desktop.PermissionState>;
 
 export function Settings():Promise<config.Settings>;
+
+export function UsageRollup():Promise<Record<string, usage.Totals>>;
 
 export function WorkspaceRoot():Promise<string>;

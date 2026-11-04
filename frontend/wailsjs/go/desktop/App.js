@@ -70,6 +70,10 @@ export function Settings() {
   return window['go']['desktop']['App']['Settings']();
 }
 
+export function UsageRollup() {
+  return window['go']['desktop']['App']['UsageRollup']();
+}
+
 export function WorkspaceRoot() {
   return window['go']['desktop']['App']['WorkspaceRoot']();
 }

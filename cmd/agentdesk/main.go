@@ -19,6 +19,7 @@ import (
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
+	usageledger "github.com/justin-mc-lai/agentdesk/internal/usage"
 	"github.com/justin-mc-lai/agentdesk/internal/workspace"
 )
 
@@ -43,6 +44,8 @@ func Execute(args []string, out, errOut io.Writer) int {
 		return cmdHistory(args[1:], out, errOut)
 	case "smoke":
 		return cmdSmoke(out, errOut)
+	case "stats":
+		return cmdStats(out, errOut)
 	case "version", "-v", "--version":
 		fmt.Fprintln(out, "agentdesk "+Version)
 		return 0
@@ -68,6 +71,7 @@ usage:
   agentdesk sessions
   agentdesk history <session-id>
   agentdesk smoke
+  agentdesk stats
   agentdesk version
 `)
 }
@@ -161,6 +165,9 @@ func runPrompt(
 		Effort:       effort,
 		Instructions: ws.Instructions(),
 		OnEvent: func(ev provider.Event) {
+			if ev.Type == provider.EventUsage && ev.Usage != nil {
+				recordUsage(p.Name(), model, sessionID, ev.Usage)
+			}
 			switch ev.Type {
 			case provider.EventContent:
 				fmt.Fprint(out, ev.Text)
@@ -174,6 +181,9 @@ func runPrompt(
 			}
 		},
 	})
+	if err := tools.SetSubagent(loop.Subagent()); err != nil {
+		return "", err
+	}
 	return loop.Run(ctx, sessionID, prompt)
 }
 
@@ -337,4 +347,46 @@ func truncate(s string, n int) string {
 
 func oneLine(s string, n int) string {
 	return truncate(strings.ReplaceAll(strings.TrimSpace(s), "\n", " "), n)
+}
+
+// recordUsage writes one ledger line. Failures are ignored: accounting must
+// never break a conversation.
+func recordUsage(providerName, model, sessionID string, u *provider.Usage) {
+	l, err := usageledger.Open("")
+	if err != nil {
+		return
+	}
+	_ = l.Add(usageledger.Record{
+		Provider: providerName, Model: model, SessionID: sessionID,
+		Prompt: u.PromptTokens, Completion: u.CompletionTokens, Total: u.TotalTokens,
+	})
+}
+
+func cmdStats(out, errOut io.Writer) int {
+	l, err := usageledger.Open("")
+	if err != nil {
+		fmt.Fprintf(errOut, "stats: %v\n", err)
+		return 1
+	}
+	byProvider, names, err := l.ByProvider()
+	if err != nil {
+		fmt.Fprintf(errOut, "stats: %v\n", err)
+		return 1
+	}
+	if len(names) == 0 {
+		fmt.Fprintln(out, "no usage recorded yet")
+		return 0
+	}
+	fmt.Fprintf(out, "%-16s %8s %10s %10s\n", "provider", "calls", "input", "output")
+	for _, n := range names {
+		t := byProvider[n]
+		fmt.Fprintf(out, "%-16s %8d %10d %10d\n", n, t.Calls, t.Prompt, t.Completion)
+	}
+	bySession, sessions, _ := l.BySession()
+	fmt.Fprintf(out, "\nsessions: %d\n", len(sessions))
+	for _, s := range sessions {
+		t := bySession[s]
+		fmt.Fprintf(out, "  %-18s calls=%-4d tokens=%-8d\n", s, t.Calls, t.Total)
+	}
+	return 0
 }

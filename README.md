@@ -99,6 +99,18 @@ turn.
 
 Set the root with `agentdesk run -w /path` or in the desktop settings panel.
 
+## Long commands, diffs, cost
+
+A shell command that takes longer than 5 seconds is detached into a background
+job and returns an id immediately; `job_output` reads it, `job_kill` stops it.
+Jobs have a 30-minute lifetime and their process group dies with them.
+
+`write_file` and `edit_file` emit a unified diff before touching disk, so the
+UI can show what is about to change.
+
+Every call's token usage is appended to `~/.agentdesk/usage.jsonl`.
+`agentdesk stats` prints totals per provider and per session.
+
 ## Permissions
 
 Tool calls are gated. Three tiers, switchable in the toolbar and persisted per session:

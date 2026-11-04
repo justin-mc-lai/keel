@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
+	"github.com/justin-mc-lai/agentdesk/internal/jobs"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 )
 
@@ -37,17 +39,37 @@ type Tool struct {
 // Approver decides whether a call may run. Returning false denies it.
 type Approver func(ctx context.Context, name string, args []byte) bool
 
+// Preview describes a pending file change, before it touches disk.
+type Preview struct {
+	Path   string
+	Before string
+	After  string
+}
+
+// Previewer is called before a write-side tool commits. A non-nil error
+// aborts the write.
+type Previewer func(Preview) error
+
 // Registry holds the tools and the approval policy.
 type Registry struct {
-	mu      sync.RWMutex
-	tools   map[string]Tool
-	approve Approver
+	mu       sync.RWMutex
+	tools    map[string]Tool
+	approve  Approver
+	preview  Previewer
+	jobs     *jobs.Manager
+	jobWait  time.Duration
+	subagent func(ctx context.Context, task string) (string, error)
 }
 
 // NewRegistry builds an empty registry. A nil approver means every tool that
 // requires approval is denied.
 func NewRegistry(approve Approver) *Registry {
-	return &Registry{tools: map[string]Tool{}, approve: approve}
+	return &Registry{
+		tools:   map[string]Tool{},
+		approve: approve,
+		jobs:    jobs.New(jobs.DefaultLimit),
+		jobWait: 5 * time.Second,
+	}
 }
 
 // Register adds a tool. A tool without a name or a function is rejected.
@@ -87,6 +109,49 @@ func (r *Registry) Specs() []provider.ToolSpec {
 		})
 	}
 	return out
+}
+
+// SetPreview installs the preview hook used by write-side tools.
+func (r *Registry) SetPreview(p Previewer) {
+	r.mu.Lock()
+	r.preview = p
+	r.mu.Unlock()
+}
+
+// previewChange runs the hook (if any) before a write.
+func (r *Registry) previewChange(p Preview) error {
+	r.mu.RLock()
+	fn := r.preview
+	r.mu.RUnlock()
+	if fn == nil {
+		return nil
+	}
+	return fn(p)
+}
+
+// SetSubagent installs the runner behind spawn_subagent. Without it the tool
+// is not registered at all, so a model never sees a capability that is missing.
+func (r *Registry) SetSubagent(fn func(ctx context.Context, task string) (string, error)) error {
+	r.mu.Lock()
+	r.subagent = fn
+	r.mu.Unlock()
+	return r.Register(Tool{
+		Name:        "spawn_subagent",
+		Description: "Run one self-contained task in an isolated session and return its result.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"task":{"type":"string"}},"required":["task"]}`),
+		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
+			var in struct {
+				Task string `json:"task"`
+			}
+			if err := json.Unmarshal(args, &in); err != nil {
+				return "", err
+			}
+			if in.Task == "" {
+				return "", fmt.Errorf("spawn_subagent: empty task")
+			}
+			return fn(ctx, in.Task)
+		},
+	})
 }
 
 // Names lists registered tool names.
