@@ -183,6 +183,9 @@ func (p *OpenAICompatible) wireRequest(model string, req Request) map[string]any
 	if req.Temperature != nil {
 		out["temperature"] = *req.Temperature
 	}
+	if req.Effort != "" {
+		out["reasoning_effort"] = req.Effort
+	}
 	return out
 }
 

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -148,5 +149,45 @@ func TestStreamRetriesOnConnectionDrop(t *testing.T) {
 	}
 	if hits < 2 {
 		t.Fatalf("expected a retry, hits = %d", hits)
+	}
+}
+
+func TestReasoningEffortForwarded(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode body: %v", err)
+		}
+		bodies = append(bodies, body)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n\n"))
+	}))
+	defer srv.Close()
+
+	p := NewOpenAICompatible(OpenAICompatibleOptions{Name: "fake", BaseURL: srv.URL})
+	drain := func(effort string) {
+		ch, err := p.Stream(context.Background(), Request{
+			Messages: []Message{{Role: RoleUser, Content: "hi"}},
+			Effort:   effort,
+		})
+		if err != nil {
+			t.Fatalf("stream: %v", err)
+		}
+		for range ch {
+		}
+	}
+
+	drain("high")
+	drain("")
+
+	if len(bodies) != 2 {
+		t.Fatalf("captured %d bodies", len(bodies))
+	}
+	if got := bodies[0]["reasoning_effort"]; got != "high" {
+		t.Fatalf("reasoning_effort = %v", got)
+	}
+	if _, ok := bodies[1]["reasoning_effort"]; ok {
+		t.Fatal("reasoning_effort must be absent when unset")
 	}
 }

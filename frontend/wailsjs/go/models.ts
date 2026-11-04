@@ -1,3 +1,24 @@
+export namespace desktop {
+	
+	export class PermissionState {
+	    mode: string;
+	    warning: boolean;
+	    pending: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new PermissionState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.mode = source["mode"];
+	        this.warning = source["warning"];
+	        this.pending = source["pending"];
+	    }
+	}
+
+}
+
 export namespace provider {
 	
 	export class Info {

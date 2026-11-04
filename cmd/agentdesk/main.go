@@ -64,7 +64,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `agentdesk — a provider-agnostic desktop LLM agent base
 
 usage:
-  agentdesk run -p "prompt" [-provider name] [-model id] [-session id]
+  agentdesk run -p "prompt" [-provider name] [-model id] [-effort level] [-session id] [-yes]
   agentdesk providers
   agentdesk sessions
   agentdesk history <session-id>
@@ -81,6 +81,7 @@ func cmdRun(args []string, out, errOut io.Writer) int {
 	model := fs.String("model", "", "model id (default: provider default)")
 	session := fs.String("session", "", "session id to continue (default: new session)")
 	approve := fs.Bool("yes", false, "auto-approve tools that require approval")
+	effort := fs.String("effort", "", "reasoning effort: off, low, medium, high")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -122,7 +123,7 @@ func cmdRun(args []string, out, errOut io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	answer, err := runPrompt(ctx, p, st, sid, *prompt, *model, *approve, out)
+	answer, err := runPrompt(ctx, p, st, sid, *prompt, *model, *effort, *approve, out)
 	if err != nil {
 		fmt.Fprintf(errOut, "\nrun: %v\n", err)
 		return 1
@@ -139,11 +140,11 @@ func runPrompt(
 	ctx context.Context,
 	p provider.Provider,
 	st *store.Store,
-	sessionID, prompt, model string,
+	sessionID, prompt, model, effort string,
 	autoApprove bool,
 	out io.Writer,
 ) (string, error) {
-	tools, err := tool.NewDefaultRegistry(func(name string, args []byte) bool { return autoApprove })
+	tools, err := tool.NewDefaultRegistry(func(ctx context.Context, name string, args []byte) bool { return autoApprove })
 	if err != nil {
 		return "", err
 	}
@@ -153,6 +154,7 @@ func runPrompt(
 		Tools:    tools,
 		Store:    st,
 		Model:    model,
+		Effort:   effort,
 		OnEvent: func(ev provider.Event) {
 			switch ev.Type {
 			case provider.EventContent:

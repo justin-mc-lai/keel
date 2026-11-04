@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime'
-import { Providers, Sessions, History, NewSession, Send, Cancel } from '../wailsjs/go/desktop/App'
+import {
+  Providers, Sessions, History, NewSession, Send, Cancel,
+  PermissionState, SetPermissionMode, ResolveApproval
+} from '../wailsjs/go/desktop/App'
 
 type ProviderInfo = { name: string; defaultModel: string; models: string[]; available: boolean }
 type Msg = { role: string; content: string; reasoning?: string }
+type PermState = { mode: string; warning: boolean; pending: number }
+type Approval = { id: string; sessionId?: string; tool: string; args: string; timeoutSec?: number }
 
 type StreamEvent = {
   type: 'reasoning' | 'content' | 'tool_call' | 'tool_start' | 'tool_done' | 'usage' | 'done' | 'error'
@@ -16,12 +21,24 @@ type StreamEvent = {
 const providers = ref<ProviderInfo[]>([])
 const provider = ref('')
 const model = ref('')
+const effort = ref('')
+const permission = ref<PermState>({ mode: 'ask', warning: false, pending: 0 })
+const approvals = ref<Approval[]>([])
+const approval = computed(() => approvals.value[0] ?? null)
 const sessionId = ref('')
 const sessions = ref<{ id: string; title: string; updatedAt: number }[]>([])
 const messages = ref<Msg[]>([])
 const input = ref('')
 const busy = ref(false)
 const status = ref('')
+
+const EFFORTS = [
+  { value: '', label: '思考：默认' },
+  { value: 'off', label: '思考：关' },
+  { value: 'low', label: '思考：低' },
+  { value: 'medium', label: '思考：中' },
+  { value: 'high', label: '思考：高' }
+]
 
 const activeProvider = computed(() => providers.value.find((p) => p.name === provider.value))
 const models = computed(() => activeProvider.value?.models ?? [])
@@ -53,8 +70,42 @@ function onStream(ev: StreamEvent) {
   }
 }
 
+function onApproval(payload: any) {
+  if (payload?.closed) {
+    approvals.value = approvals.value.filter((a) => a.id !== payload.id)
+    return
+  }
+  if (!approvals.value.some((a) => a.id === payload.id)) {
+    approvals.value.push(payload as Approval)
+  }
+  refreshPermission()
+}
+
+async function refreshPermission() {
+  permission.value = (await PermissionState()) as PermState
+}
+
+async function changePermission(e: Event) {
+  const mode = (e.target as HTMLSelectElement).value
+  permission.value = (await SetPermissionMode(mode)) as PermState
+}
+
+async function answer(decision: 'allow_once' | 'allow_session' | 'deny') {
+  const a = approval.value
+  if (!a) return
+  approvals.value = approvals.value.filter((x) => x.id !== a.id)
+  try {
+    await ResolveApproval(a.id, decision)
+  } catch (err) {
+    status.value = String(err)
+  }
+  await refreshPermission()
+}
+
 onMounted(async () => {
   EventsOn('chat:event', onStream)
+  EventsOn('tool:approval', onApproval)
+  await refreshPermission()
   providers.value = (await Providers()) ?? []
   const ready = providers.value.find((p) => p.available) ?? providers.value[0]
   if (ready) {
@@ -64,7 +115,10 @@ onMounted(async () => {
   await loadSessions()
 })
 
-onUnmounted(() => EventsOff('chat:event'))
+onUnmounted(() => {
+  EventsOff('chat:event')
+  EventsOff('tool:approval')
+})
 
 async function loadSessions() {
   sessions.value = (await Sessions()) ?? []
@@ -97,7 +151,7 @@ async function send() {
   status.value = 'streaming'
 
   try {
-    await Send(sessionId.value, provider.value, model.value, text)
+    await Send(sessionId.value, provider.value, model.value, effort.value, text)
   } catch (err) {
     status.value = String(err)
     busy.value = false
@@ -106,11 +160,14 @@ async function send() {
     }
   } finally {
     busy.value = false
+    approvals.value = approvals.value.filter((a) => a.sessionId !== sessionId.value)
+    await refreshPermission()
     await loadSessions()
   }
 }
 
-function stop() {
+async function stop() {
+  while (approvals.value.length > 0) await answer('deny')
   if (sessionId.value) Cancel(sessionId.value)
 }
 
@@ -149,6 +206,20 @@ function onKeydown(e: KeyboardEvent) {
         <select v-model="model">
           <option v-for="m in models" :key="m" :value="m">{{ m }}</option>
         </select>
+        <select
+          class="perm"
+          :class="{ danger: permission.warning }"
+          :value="permission.mode"
+          @change="changePermission"
+        >
+          <option value="ask">权限：每次都问</option>
+          <option value="allow">权限：本会话放行</option>
+          <option value="bypass">权限：全部放行</option>
+        </select>
+        <select v-model="effort">
+          <option v-for="e in EFFORTS" :key="e.value" :value="e.value">{{ e.label }}</option>
+        </select>
+        <span v-if="permission.warning" class="warn">BYPASS · 工具不再询问</span>
         <span class="status">{{ status }}</span>
       </header>
 
@@ -164,6 +235,21 @@ function onKeydown(e: KeyboardEvent) {
           </details>
           <div class="bubble">{{ m.content }}</div>
         </div>
+      </div>
+
+      <div v-if="approval" class="approval">
+        <div class="approval-head">
+          <strong>工具请求执行</strong>
+          <code>{{ approval.tool }}</code>
+          <span v-if="approvals.length > 1" class="queued">还有 {{ approvals.length - 1 }} 个待处理</span>
+        </div>
+        <pre class="approval-args">{{ approval.args }}</pre>
+        <div class="approval-actions">
+          <button class="allow" @click="answer('allow_once')">允许一次</button>
+          <button class="allow-session" @click="answer('allow_session')">本会话允许此工具</button>
+          <button class="deny" @click="answer('deny')">拒绝</button>
+        </div>
+        <p class="approval-hint">等待中，{{ approval.timeoutSec ?? 120 }} 秒后自动拒绝</p>
       </div>
 
       <footer class="composer">

@@ -129,3 +129,50 @@ body {
   cursor: pointer;
 }
 .composer button.stop { background: #e05b5b; color: #fff; }
+
+.perm.danger { border-color: #e05b5b; color: #ffb4b4; }
+.warn {
+  background: #4a1d1d;
+  color: #ffb4b4;
+  border: 1px solid #8a3232;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.approval {
+  margin: 0 14px 10px;
+  border: 1px solid #8a5a2b;
+  background: #2a2118;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+.approval-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.approval-head code { color: #ffcf8b; }
+.approval-args {
+  margin: 0 0 10px;
+  padding: 8px;
+  background: #1b1611;
+  border-radius: 6px;
+  color: #d8c8b4;
+  font-size: 12px;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.approval-actions { display: flex; gap: 8px; }
+.approval-actions button {
+  border: 1px solid #5a4a38;
+  background: #33291d;
+  color: #e8d8c4;
+  border-radius: 7px;
+  padding: 7px 12px;
+  cursor: pointer;
+}
+.approval-actions button.allow { border-color: #4f7d4f; color: #b7e2b7; }
+.approval-actions button.allow-session { border-color: #4f6d8d; color: #b7d0e8; }
+.approval-actions button.deny { border-color: #8a3232; color: #ffb4b4; }
+.approval-hint { margin: 8px 0 0; color: var(--muted); font-size: 12px; }
+.queued { margin-left: auto; color: var(--muted); font-size: 12px; }

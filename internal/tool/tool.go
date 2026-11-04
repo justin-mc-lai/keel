@@ -35,7 +35,7 @@ type Tool struct {
 }
 
 // Approver decides whether a call may run. Returning false denies it.
-type Approver func(name string, args []byte) bool
+type Approver func(ctx context.Context, name string, args []byte) bool
 
 // Registry holds the tools and the approval policy.
 type Registry struct {
@@ -120,7 +120,7 @@ func (r *Registry) Run(ctx context.Context, call provider.ToolCall) (string, err
 		return "", fmt.Errorf("tool %s: invalid JSON arguments", call.Name)
 	}
 	if t.RequiresApproval {
-		if approve == nil || !approve(t.Name, []byte(args)) {
+		if approve == nil || !approve(ctx, t.Name, []byte(args)) {
 			return "", fmt.Errorf("%w: %s", ErrDenied, call.Name)
 		}
 	}

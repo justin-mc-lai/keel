@@ -70,17 +70,31 @@ Add or override providers in `~/.agentdesk/config.json` (or the path in `AGENTDE
 
 `${VAR}` in `apiKey` is resolved from the environment, so the config file never has to hold a secret.
 
+## Permissions
+
+Tool calls are gated. Three tiers, switchable in the toolbar and persisted per session:
+
+| Tier | Behaviour |
+|---|---|
+| `ask` (default) | every gated call shows an approval card; 120s with no answer = denied |
+| `allow` | asks once per tool per session, then remembers |
+| `bypass` | never asks, and the toolbar shows a persistent red warning |
+
+`run_shell` is the one built-in tool that requires approval, so the tiers have something real to gate. Approved calls run with a 30s deadline, kill their whole process group on timeout, and cap output at 8 KB.
+
+The approval window is bounded on purpose: the call blocks the agent loop, so an unanswered card must not park a turn forever. Cancelling the turn also cancels the pending approval.
+
 ## CLI
 
 ```bash
-agentdesk run -p "…" [-provider name] [-model id] [-session id] [-yes]
+agentdesk run -p "…" [-provider name] [-model id] [-effort level] [-session id] [-yes]
 agentdesk providers
 agentdesk sessions
 agentdesk history <session-id>
 agentdesk smoke
 ```
 
-`run` streams tokens to stdout, persists the conversation to SQLite, and prints the session id on stderr so it stays out of piped output.
+`run` streams tokens to stdout, persists the conversation to SQLite, and prints the session id on stderr so it stays out of piped output. `-yes` auto-approves gated tools; without it a gated call is denied and the model is told so. `-effort` maps to `reasoning_effort` (off / low / medium / high) and is omitted when unset.
 
 ## Architecture notes
 

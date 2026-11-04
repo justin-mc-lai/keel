@@ -39,7 +39,7 @@ func TestRunCommandStreams(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	answer, err := runPrompt(context.Background(), &fakeStreamer{reply: "PONG"}, st, sid, "hi", "", false, &out)
+	answer, err := runPrompt(context.Background(), &fakeStreamer{reply: "PONG"}, st, sid, "hi", "", "", false, &out)
 	if err != nil {
 		t.Fatalf("runPrompt: %v", err)
 	}

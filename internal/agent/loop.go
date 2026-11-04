@@ -4,6 +4,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -22,6 +23,7 @@ type Options struct {
 	Tools         *tool.Registry
 	Store         *store.Store
 	Model         string
+	Effort        string
 	SystemPrompt  string
 	MaxIterations int
 	OnEvent       func(provider.Event)
@@ -73,6 +75,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, input string) (string, error)
 	for iter := 0; iter < l.opt.MaxIterations; iter++ {
 		stream, err := l.opt.Provider.Stream(ctx, provider.Request{
 			Model:     l.opt.Model,
+			Effort:    l.opt.Effort,
 			Messages:  msgs,
 			Tools:     l.tools(),
 			SessionID: sessionID,
@@ -121,7 +124,7 @@ func (l *Loop) Run(ctx context.Context, sessionID, input string) (string, error)
 			out, runErr := l.runTool(ctx, call)
 			text := out
 			if runErr != nil {
-				text = "error: " + runErr.Error()
+				text = denialText(runErr)
 			}
 			l.emit(provider.Event{Type: provider.EventToolDone, ToolCall: &call, Text: text})
 			toolMsg := provider.Message{
@@ -145,6 +148,18 @@ func (l *Loop) tools() []provider.ToolSpec {
 		return nil
 	}
 	return l.opt.Tools.Specs()
+}
+
+// denialText keeps the transcript string stable for the two cases the UI and
+// the acceptance criteria name explicitly.
+func denialText(err error) string {
+	if errors.Is(err, tool.ErrDenied) {
+		return "error: tool: approval denied"
+	}
+	if errors.Is(err, tool.ErrUnknownTool) {
+		return "error: tool: not registered"
+	}
+	return "error: " + err.Error()
 }
 
 func (l *Loop) runTool(ctx context.Context, call provider.ToolCall) (string, error) {

@@ -51,6 +51,9 @@ type Request struct {
 	Tools       []ToolSpec
 	MaxTokens   int
 	Temperature *float64
+	// Effort is forwarded as reasoning_effort when non-empty. Vendors that
+	// do not understand it ignore it.
+	Effort string
 	// SessionID is forwarded to providers that require a per-conversation
 	// identity header (OpenCode Go uses x-opencode-session).
 	SessionID string

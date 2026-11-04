@@ -6,25 +6,44 @@ package desktop
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"github.com/justin-mc-lai/agentdesk/internal/agent"
 	"github.com/justin-mc-lai/agentdesk/internal/config"
+	"github.com/justin-mc-lai/agentdesk/internal/perm"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
 )
 
-// EventChat is the single frontend event name carrying every stream event.
-const EventChat = "chat:event"
+// Event names carried to the frontend.
+const (
+	// EventChat carries every stream event.
+	EventChat = "chat:event"
+	// EventApproval carries an approval request and its resolution.
+	EventApproval = "tool:approval"
+)
 
 // Emitter forwards an event to the frontend. Tests replace it.
 type Emitter func(name string, data ...any)
+
+// PermissionState is what the toolbar renders.
+type PermissionState struct {
+	Mode    string `json:"mode"`
+	Warning bool   `json:"warning"`
+	Pending int    `json:"pending"`
+}
+
+// ErrNoStore is returned when the session database could not be opened.
+var ErrNoStore = errors.New("session store unavailable")
 
 // App is bound to the frontend.
 type App struct {
@@ -32,9 +51,11 @@ type App struct {
 	reg   *provider.Registry
 	store *store.Store
 	emit  Emitter
+	perm  *perm.Controller
 
 	mu      sync.Mutex
 	running map[string]context.CancelFunc
+	pending map[string]chan perm.Decision
 }
 
 // New builds the app and loads persisted state.
@@ -55,7 +76,14 @@ func New() *App {
 
 // NewWith wires explicit dependencies (tests and embedders).
 func NewWith(reg *provider.Registry, st *store.Store) *App {
-	return &App{reg: reg, store: st, running: map[string]context.CancelFunc{}}
+	a := &App{
+		reg:     reg,
+		store:   st,
+		running: map[string]context.CancelFunc{},
+		pending: map[string]chan perm.Decision{},
+	}
+	a.perm = perm.New(a.askApproval)
+	return a
 }
 
 // Startup is called by Wails.
@@ -78,9 +106,6 @@ func (a *App) SetEmitter(e Emitter) { a.emit = e }
 
 // Providers returns the configured vendors for the settings panel.
 func (a *App) Providers() []provider.Info { return a.reg.List() }
-
-// ErrNoStore is returned when the session database could not be opened.
-var ErrNoStore = errors.New("session store unavailable")
 
 // Sessions lists stored conversations.
 func (a *App) Sessions() ([]store.Session, error) {
@@ -106,7 +131,7 @@ func (a *App) NewSession() (string, error) {
 	return a.store.CreateSession("")
 }
 
-// Cancel stops an in-flight turn.
+// Cancel stops an in-flight turn, including any approval it is waiting on.
 func (a *App) Cancel(sessionID string) {
 	a.mu.Lock()
 	cancel, ok := a.running[sessionID]
@@ -114,11 +139,59 @@ func (a *App) Cancel(sessionID string) {
 	if ok {
 		cancel()
 	}
+	// Session grants deliberately survive a cancel: "本会话允许" means the
+	// session, not the turn.
+}
+
+// PermissionState returns the current tier and whether it is a warning state.
+func (a *App) PermissionState() PermissionState {
+	a.mu.Lock()
+	pending := len(a.pending)
+	a.mu.Unlock()
+	return PermissionState{
+		Mode:    string(a.perm.Mode()),
+		Warning: a.perm.Warning(),
+		Pending: pending,
+	}
+}
+
+// SetPermissionMode switches the tier: ask / allow / bypass.
+func (a *App) SetPermissionMode(mode string) (PermissionState, error) {
+	m, err := perm.NormalizeMode(mode)
+	if err != nil {
+		return a.PermissionState(), err
+	}
+	if err := a.perm.SetMode(m); err != nil {
+		return a.PermissionState(), err
+	}
+	return a.PermissionState(), nil
+}
+
+// ResolveApproval answers one pending approval request.
+func (a *App) ResolveApproval(id, decision string) error {
+	d := perm.Decision(decision)
+	switch d {
+	case perm.AllowOnce, perm.AllowSession, perm.Deny:
+	default:
+		return fmt.Errorf("unknown decision %q", decision)
+	}
+	a.mu.Lock()
+	ch, ok := a.pending[id]
+	a.mu.Unlock()
+	if !ok {
+		return fmt.Errorf("no pending approval %q", id)
+	}
+	select {
+	case ch <- d:
+		return nil
+	default:
+		return fmt.Errorf("approval %q already answered", id)
+	}
 }
 
 // Send runs one turn. Tokens arrive on EventChat while it runs; the returned
 // string is the final answer so a caller that lost the stream can recover.
-func (a *App) Send(sessionID, providerName, model, text string) (string, error) {
+func (a *App) Send(sessionID, providerName, model, effort, text string) (string, error) {
 	if a.store == nil {
 		return "", ErrNoStore
 	}
@@ -134,16 +207,14 @@ func (a *App) Send(sessionID, providerName, model, text string) (string, error) 
 		return "", err
 	}
 
-	// Default deny: the desktop has no approval prompt yet, so a tool that
-	// asks for approval must not run unattended. Built-in tools do not ask.
-	tools, err := tool.NewDefaultRegistry(func(name string, args []byte) bool { return false })
+	tools, err := tool.NewDefaultRegistry(a.perm.Approver(sessionID))
 	if err != nil {
 		return "", err
 	}
 
-	ctx, cancel := context.WithCancel(a.ctx)
-	if ctx == nil {
-		ctx, cancel = context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(context.Background())
+	if a.ctx != nil {
+		ctx, cancel = context.WithCancel(a.ctx)
 	}
 	a.mu.Lock()
 	a.running[sessionID] = cancel
@@ -160,9 +231,46 @@ func (a *App) Send(sessionID, providerName, model, text string) (string, error) 
 		Tools:    tools,
 		Store:    a.store,
 		Model:    model,
-		OnEvent:  func(ev provider.Event) { a.emit(EventChat, ev) },
+		Effort:   effort,
+		OnEvent:  func(ev provider.Event) { a.emitEvent(EventChat, ev) },
 	})
 	return loop.Run(ctx, sessionID, text)
+}
+
+// askApproval bridges a blocking tool approval to the frontend. perm bounds
+// the wait; ctx.Done also unblocks it when the turn is cancelled.
+func (a *App) askApproval(ctx context.Context, sessionID, toolName string, args []byte) (perm.Decision, error) {
+	id, err := newID()
+	if err != nil {
+		return perm.Deny, err
+	}
+	ch := make(chan perm.Decision, 1)
+	a.mu.Lock()
+	a.pending[id] = ch
+	a.mu.Unlock()
+	defer func() {
+		a.mu.Lock()
+		delete(a.pending, id)
+		a.mu.Unlock()
+	}()
+
+	a.emitEvent(EventApproval, map[string]any{
+		"id":         id,
+		"sessionId":  sessionID,
+		"tool":       toolName,
+		"args":       string(args),
+		"timeoutSec": int(perm.DefaultTimeout / time.Second),
+	})
+
+	select {
+	case d := <-ch:
+		return d, nil
+	case <-ctx.Done():
+		a.emitEvent(EventApproval, map[string]any{
+			"id": id, "closed": true, "decision": string(perm.Deny),
+		})
+		return perm.Deny, ctx.Err()
+	}
 }
 
 func (a *App) pick(name string) (provider.Provider, error) {
@@ -178,4 +286,18 @@ func (a *App) pick(name string) (provider.Provider, error) {
 		return nil, fmt.Errorf("unknown provider %q", name)
 	}
 	return p, nil
+}
+
+func (a *App) emitEvent(name string, data ...any) {
+	if a.emit != nil {
+		a.emit(name, data...)
+	}
+}
+
+func newID() (string, error) {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return "ap_" + hex.EncodeToString(b), nil
 }

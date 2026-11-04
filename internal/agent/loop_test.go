@@ -2,10 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/justin-mc-lai/agentdesk/internal/perm"
 	"github.com/justin-mc-lai/agentdesk/internal/provider"
 	"github.com/justin-mc-lai/agentdesk/internal/store"
 	"github.com/justin-mc-lai/agentdesk/internal/tool"
@@ -135,4 +138,169 @@ func TestLoopStopsAtIterationLimit(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "exceeded") {
 		t.Fatalf("want iteration error, got %v", err)
 	}
+}
+
+// gatedTools builds a registry with one tool that requires approval.
+func gatedTools(t *testing.T, approve func(ctx context.Context, name string, args []byte) bool) *tool.Registry {
+	t.Helper()
+	r := tool.NewRegistry(approve)
+	if err := r.Register(tool.Tool{
+		Name:             "danger",
+		RequiresApproval: true,
+		Run: func(ctx context.Context, args json.RawMessage) (string, error) {
+			return "ran", nil
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
+func TestApprovalBlocksThenResumes(t *testing.T) {
+	call := provider.ToolCall{ID: "c1", Name: "danger", Arguments: `{}`}
+	p := &scriptedProvider{turns: [][]provider.Event{
+		{{Type: provider.EventToolCall, ToolCall: &call}},
+		{{Type: provider.EventContent, Text: "done"}},
+	}}
+
+	st, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	sid, _ := st.CreateSession("t")
+
+	asked := make(chan string, 1)
+	release := make(chan struct{})
+	ctrl := perm.New(func(ctx context.Context, sessionID, name string, args []byte) (perm.Decision, error) {
+		asked <- name
+		<-release
+		return perm.AllowOnce, nil
+	})
+
+	loop := New(Options{Provider: p, Tools: gatedTools(t, ctrl.Approver(sid)), Store: st})
+	done := make(chan struct {
+		answer string
+		err    error
+	}, 1)
+	go func() {
+		a, e := loop.Run(context.Background(), sid, "do it")
+		done <- struct {
+			answer string
+			err    error
+		}{a, e}
+	}()
+
+	select {
+	case name := <-asked:
+		if name != "danger" {
+			t.Fatalf("asked for %q", name)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("approval was never requested")
+	}
+
+	// The loop must still be blocked while the human has not answered.
+	select {
+	case r := <-done:
+		t.Fatalf("loop finished before approval: %+v", r)
+	case <-time.After(150 * time.Millisecond):
+	}
+
+	close(release)
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("Run: %v", r.err)
+		}
+		if r.answer != "done" {
+			t.Fatalf("answer = %q", r.answer)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("loop did not resume after approval")
+	}
+
+	msgs, _ := st.Messages(sid)
+	var sawTool bool
+	for _, m := range msgs {
+		if m.Role == provider.RoleTool {
+			sawTool = true
+			if m.Content != "ran" {
+				t.Fatalf("tool result = %q", m.Content)
+			}
+		}
+	}
+	if !sawTool {
+		t.Fatal("tool result not persisted")
+	}
+}
+
+func TestApprovalTimeoutAndCancel(t *testing.T) {
+	newLoop := func(t *testing.T, ctrl *perm.Controller) (*Loop, *store.Store, string, *scriptedProvider) {
+		call := provider.ToolCall{ID: "c1", Name: "danger", Arguments: `{}`}
+		p := &scriptedProvider{turns: [][]provider.Event{
+			{{Type: provider.EventToolCall, ToolCall: &call}},
+			{{Type: provider.EventContent, Text: "done"}},
+		}}
+		st, err := store.Open(":memory:")
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.Close() })
+		sid, _ := st.CreateSession("t")
+		return New(Options{Provider: p, Tools: gatedTools(t, ctrl.Approver(sid)), Store: st}), st, sid, p
+	}
+
+	t.Run("timeout denies and the turn continues", func(t *testing.T) {
+		ctrl := perm.New(func(ctx context.Context, sessionID, name string, args []byte) (perm.Decision, error) {
+			<-ctx.Done()
+			return perm.Deny, ctx.Err()
+		})
+		ctrl.SetTimeout(50 * time.Millisecond)
+		loop, st, sid, _ := newLoop(t, ctrl)
+
+		start := time.Now()
+		answer, err := loop.Run(context.Background(), sid, "go")
+		if err != nil {
+			t.Fatalf("Run: %v", err)
+		}
+		if elapsed := time.Since(start); elapsed > 2*time.Second {
+			t.Fatalf("timeout took %v", elapsed)
+		}
+		if answer != "done" {
+			t.Fatalf("answer = %q", answer)
+		}
+		msgs, _ := st.Messages(sid)
+		var denied bool
+		for _, m := range msgs {
+			if m.Role == provider.RoleTool && m.Content == "error: tool: approval denied" {
+				denied = true
+			}
+		}
+		if !denied {
+			t.Fatal("tool result should record the denial")
+		}
+	})
+
+	t.Run("cancel unblocks the pending approval", func(t *testing.T) {
+		ctrl := perm.New(func(ctx context.Context, sessionID, name string, args []byte) (perm.Decision, error) {
+			<-ctx.Done()
+			return perm.Deny, ctx.Err()
+		})
+		ctrl.SetTimeout(30 * time.Second)
+		loop, _, sid, _ := newLoop(t, ctrl)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() { done <- func() error { _, e := loop.Run(ctx, sid, "go"); return e }() }()
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Fatal("cancel did not unblock the loop")
+		}
+	})
 }

@@ -14,12 +14,20 @@ export function NewSession() {
   return window['go']['desktop']['App']['NewSession']();
 }
 
+export function PermissionState() {
+  return window['go']['desktop']['App']['PermissionState']();
+}
+
 export function Providers() {
   return window['go']['desktop']['App']['Providers']();
 }
 
-export function Send(arg1, arg2, arg3, arg4) {
-  return window['go']['desktop']['App']['Send'](arg1, arg2, arg3, arg4);
+export function ResolveApproval(arg1, arg2) {
+  return window['go']['desktop']['App']['ResolveApproval'](arg1, arg2);
+}
+
+export function Send(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['desktop']['App']['Send'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function Sessions() {
@@ -28,4 +36,8 @@ export function Sessions() {
 
 export function SetEmitter(arg1) {
   return window['go']['desktop']['App']['SetEmitter'](arg1);
+}
+
+export function SetPermissionMode(arg1) {
+  return window['go']['desktop']['App']['SetPermissionMode'](arg1);
 }
